@@ -225,9 +225,12 @@ class DraftScoreWeights(_Model):
     value: float = Field(default=1.0, ge=0.0)
     urgency: float = Field(default=1.0, ge=0.0)
     roster_fit: float = Field(default=1.0, ge=0.0)
+    #: Shrinkage toward market consensus. Set to 0 to ignore ADP in the score.
     market_value: float = Field(default=0.25, ge=0.0)
     risk: float = Field(default=1.0, ge=0.0)
     tier_cliff: float = Field(default=1.0, ge=0.0)
+    #: Hard cap on the market term, in points, so it stays a tiebreaker.
+    max_market_points: float = Field(default=8.0, ge=0.0)
 
 
 class AnalyticsConfig(_Model):
@@ -245,6 +248,9 @@ class AnalyticsConfig(_Model):
     adp_source_priority: list[str] = Field(
         default_factory=lambda: ["fantasypros", "sleeper", "csv", "demo"]
     )
+    #: Fraction of the fantasy season a rostered non-starter actually starts.
+    #: Drives how much bench depth is worth in roster fit; see analytics/roster_fit.py.
+    bench_start_share: float = Field(default=0.25, ge=0.0, le=1.0)
     #: Players outside this ADP/rank depth are ignored by board analytics.
     max_player_pool: int = Field(default=400, ge=50, le=2000)
     #: Points-per-game basis when converting season projections for display.
