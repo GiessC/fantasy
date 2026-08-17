@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local runtime data (databases, HTTP caches, generated exports)
+data/
+!data/.gitkeep
+
+# Local user configuration (the examples in config/ are tracked)
+config/league.yaml
+config/sources.yaml

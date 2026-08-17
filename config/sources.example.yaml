@@ -1,0 +1,64 @@
+# Data sources, local model, and paths.
+#
+#   cp config/sources.example.yaml config/sources.yaml
+#
+# No secrets belong in this file. API keys are referenced by environment
+# variable name and read at request time.
+
+paths:
+  data_dir: data
+  database: data/fantasy.db
+  http_cache: data/http-cache
+
+sources:
+  fantasypros:
+    enabled: true
+    base_url: https://api.fantasypros.com/public/v2/json/nfl
+    api_key_env: FANTASYPROS_API_KEY   # export FANTASYPROS_API_KEY=...
+    scoring: auto                      # auto | STD | HALF | PPR
+    positions: [QB, RB, WR, TE, K, DST]
+    ranking_types: [ADP, ROS, DRAFT]
+    projection_week: 0                 # 0 = full season
+
+  sleeper:
+    enabled: true
+    base_url: https://api.sleeper.app/v1
+    # Point these at your real Sleeper draft to import picks live:
+    # league_id: "1234567890"
+    # draft_id: "1234567890"
+    # username: your-sleeper-username
+    player_cache_ttl_seconds: 86400
+
+  # FantasyPros' website has a "Download CSV" button on every rankings and
+  # projections page. Drop those files here and use:
+  #   fantasy-ai sync projections --from-csv data/imports/FantasyPros_Projections_RB.csv
+  csv_import:
+    enabled: true
+    directory: data/imports
+
+  http:
+    timeout_seconds: 20
+    max_retries: 3
+    backoff_seconds: 1.0
+    rate_limit_interval: 0.0
+    cache_ttl_seconds: 21600           # 6 hours; 0 disables the HTTP cache
+
+  staleness_warning_hours: 24
+
+llm:
+  enabled: true
+  base_url: http://localhost:1234/v1
+  # The model identifier LM Studio reports for your loaded model. Check with:
+  #   curl http://localhost:1234/v1/models
+  # or: fantasy-ai llm models
+  model: muse-glimmer
+  temperature: 0.2
+  max_tokens: 1200
+  timeout_seconds: 120
+  structured_output: json_schema       # json_schema | json_object | prompt_only | off
+  max_parse_retries: 2
+  max_candidates: 8
+  # extra_body:
+  #   top_p: 0.9
+
+log_level: info

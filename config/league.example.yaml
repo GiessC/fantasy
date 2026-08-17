@@ -1,0 +1,174 @@
+# League configuration.
+#
+# Copy to config/league.yaml and edit. Everything about your league lives here;
+# no analytics code needs to change when your rules do.
+#
+#   cp config/league.example.yaml config/league.yaml
+#   fantasy-ai validate-config
+#
+# Every field below is optional except league.season and league.teams --
+# omitted fields fall back to the documented defaults.
+
+league:
+  name: My Fantasy League
+  season: 2026
+  type: redraft            # redraft | keeper | dynasty
+
+  teams: 10
+
+  scoring:
+    passing:
+      yards_per_point: 25  # or: points_per_yard: 0.04
+      touchdown: 4
+      interception: -2
+      two_point: 2
+      # completion: 0
+      # first_down: 0
+
+    rushing:
+      yards_per_point: 10
+      touchdown: 6
+      two_point: 2
+      # first_down: 0
+
+    receiving:
+      yards_per_point: 10
+      touchdown: 6
+      reception: 0.5       # 0 = standard, 0.5 = half PPR, 1 = full PPR
+      two_point: 2
+      # first_down: 0
+
+    fumbles:
+      lost: -2
+
+    kicking:
+      extra_point: 1
+      field_goal:
+        ranges:
+          "0-39": 3
+          "40-49": 4
+          "50+": 5
+      # A flat value works too:  field_goal: 3
+
+    defense:
+      sack: 1
+      interception: 2
+      fumble_recovery: 2
+      touchdown: 6
+      safety: 2
+      blocked_kick: 2
+      points_allowed:
+        "0": 10
+        "1-6": 7
+        "7-13": 4
+        "14-20": 1
+        "21-27": 0
+        "28-34": -1
+        "35+": -4
+
+    # TE premium and other per-position deltas. Only the values you list are
+    # overridden; everything else inherits from the sections above.
+    # position_overrides:
+    #   TE:
+    #     receiving:
+    #       reception: 1.0
+
+    # Threshold bonuses. per_game bonuses are evaluated against a season
+    # projection using a normal per-game approximation -- see ANALYTICS.md.
+    # bonuses:
+    #   - name: 100-yard rushing game
+    #     stat: rush_yd
+    #     threshold: 100
+    #     points: 3
+    #     per_game: true
+    #     positions: [RB, WR, QB]
+    #   - name: 300-yard passing game
+    #     stat: pass_yd
+    #     threshold: 300
+    #     points: 3
+    #     per_game: true
+
+    # Anything the named sections do not cover, keyed by canonical stat key
+    # (see src/fantasy_ai/stats.py for the full vocabulary).
+    # custom:
+    #   rec_first_down: 0.5
+
+  roster:
+    QB: 1
+    RB: 2
+    WR: 2
+    TE: 1
+    FLEX: 1
+    K: 1
+    DST: 1
+    BENCH: 6
+    # IR: 1
+    # TAXI: 0
+    # SUPERFLEX: 1
+
+  flex:
+    allowed_positions: [RB, WR, TE]
+    # Per-slot overrides for additional flex types:
+    # slots:
+    #   SUPERFLEX: [QB, RB, WR, TE]
+    #   WRT: [WR, TE]
+
+  draft:
+    type: snake            # snake | linear | third_round_reversal | auction
+    position: 7            # your 1-indexed draft slot
+    rounds: 16
+    # seconds_per_pick: 90
+    # budget: 200          # required for auction
+
+  waivers:
+    type: rolling          # rolling | faab | reverse_standings | none
+    # faab_budget: 100
+
+  playoff:
+    teams: 6
+    # start_week: 15
+
+  # keepers:
+  #   enabled: true
+  #   max_keepers: 2
+  #   cost_rule: round_penalty
+  #   round_penalty: -1
+  #   keepers:
+  #     "Player Name": 5
+
+  notes:
+    - "League has been running since 2018; trades are common."
+
+# ---------------------------------------------------------------------------
+# Analytics tuning. Optional -- the defaults are reasonable. Documented in
+# ANALYTICS.md; every knob here changes deterministic math, never the LLM.
+# ---------------------------------------------------------------------------
+analytics:
+  replacement:
+    method: starter_demand   # starter_demand | fixed_rank | blended
+    window: 3                # average this many players around the replacement rank
+    offset: 0
+  tiers:
+    sensitivity: 1.0         # tier break when a gap exceeds mean + 1.0 sd
+    max_tier_size: 8
+    min_gap_points: 1.0
+  risk:
+    consensus_weight: 0.15
+    injury_weight: 6.0
+    age_weight: 1.5
+    max_discount_points: 25.0
+  weights:
+    # All components are already in fantasy points, so 1.0 means "count it at
+    # face value". market_value is discounted because ADP edge is soft.
+    value: 1.0
+    urgency: 1.0
+    roster_fit: 1.0
+    market_value: 0.25
+    risk: 1.0
+    tier_cliff: 1.0
+
+simulation:
+  iterations: 1000
+  seed: 20260817
+  adp_noise_fraction: 0.22
+  need_weight: 0.35
