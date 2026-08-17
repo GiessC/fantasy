@@ -59,6 +59,22 @@ fantasy-ai llm status
 fantasy-ai recommend
 ```
 
+## Web UI
+
+```bash
+cd web && npm install && npm run build   # once
+fantasy-ai serve --open
+```
+
+A live-draft board at <http://127.0.0.1:8765>: best available with the full
+analytics, click any row for the complete decomposition, type a name to record
+a pick, and your roster, open starting slots, and positional scarcity update as
+the draft moves. It binds to localhost and has no authentication, because it is
+not meant to leave your machine.
+
+The UI consumes the same services the CLI does — the analysis cannot differ
+between them. OpenAPI docs are at `/docs`.
+
 ## Drafting
 
 ```bash
@@ -130,6 +146,7 @@ Nothing about a league is hard-coded. See [CONFIGURATION.md](CONFIGURATION.md).
 | `simulate availability\|draft\|player` | Monte Carlo |
 | `recommend` / `ask` | Local model, over the analytics |
 | `llm status\|models\|context` | Model diagnostics |
+| `serve` | The web UI and its API |
 
 Most commands take `--json` for piping. `--help` works everywhere.
 
@@ -157,16 +174,24 @@ src/fantasy_ai/
 ├── analytics/       scoring, replacement, VOR, tiers, scarcity, risk, draft score
 ├── draft/           draft order, persisted state, Monte Carlo simulator
 ├── llm/             OpenAI-compatible client, context builder, validation
-├── services/        orchestration used by the CLI (and any future API)
+├── services/        orchestration shared by the CLI and the API
+├── api/             FastAPI layer for the web UI
 └── cli/             presentation only
+```
+
+```
+web/                 React + TypeScript + Vite frontend
 ```
 
 ## Development
 
 ```bash
-pytest                 # 359 tests, no network, no model server
+pytest                 # 398 tests, no network, no model server
 ruff check src tests
 mypy src/fantasy_ai
+
+cd web && npm run typecheck && npm run build
+npm run dev            # Vite dev server, proxying /api to fantasy-ai serve
 ```
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for what is built, what is stubbed, and
@@ -186,5 +211,6 @@ what remains.
 
 ## Stack
 
-Python 3.11+, SQLite, Pydantic, httpx, Typer, Rich, pytest. No Docker, no
-Postgres, no message queue — none of it is needed to draft.
+Python 3.11+, SQLite, Pydantic, httpx, Typer, Rich, pytest. The optional web UI
+adds FastAPI, uvicorn, and React + TypeScript + Vite. No Docker, no Postgres, no
+message queue — none of it is needed to draft.

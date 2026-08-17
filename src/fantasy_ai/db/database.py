@@ -44,10 +44,24 @@ def content_hash(payload: Any) -> str:
 class Database:
     """A connection to the local SQLite database."""
 
-    def __init__(self, path: Path | str, *, create_parents: bool = True) -> None:
+    def __init__(
+        self,
+        path: Path | str,
+        *,
+        create_parents: bool = True,
+        allow_cross_thread: bool = False,
+    ) -> None:
+        """Open a database handle.
+
+        ``allow_cross_thread`` relaxes sqlite3's same-thread check. It exists for
+        the HTTP API, where FastAPI runs sync handlers in a threadpool, and it is
+        only safe because that layer serialises every database access behind a
+        single lock. The CLI keeps the strict default.
+        """
         self.path = Path(path)
         if self.path.name != ":memory:" and create_parents:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.allow_cross_thread = allow_cross_thread
         self._connection: sqlite3.Connection | None = None
 
     # -- lifecycle ---------------------------------------------------------
@@ -61,7 +75,11 @@ class Database:
     def _connect(self) -> sqlite3.Connection:
         target = ":memory:" if self.path.name == ":memory:" else str(self.path)
         try:
-            connection = sqlite3.connect(target, isolation_level=None)
+            connection = sqlite3.connect(
+                target,
+                isolation_level=None,
+                check_same_thread=not self.allow_cross_thread,
+            )
         except sqlite3.Error as exc:  # pragma: no cover - depends on filesystem
             raise DatabaseError(f"Cannot open database {target}: {exc}") from exc
         connection.row_factory = sqlite3.Row

@@ -212,8 +212,11 @@ class DataFreshness:
         hours = self.age_hours(now)
         if hours is None:
             return "never"
+        if hours < 1 / 60:
+            return "just now"
         if hours < 1:
-            return f"{hours * 60:.0f} minutes ago"
+            minutes = round(hours * 60)
+            return f"{minutes} minute{'' if minutes == 1 else 's'} ago"
         if hours < 48:
             return f"{hours:.1f} hours ago"
         return f"{hours / 24:.1f} days ago"

@@ -10,9 +10,9 @@
 | 4. Draft state | **Done** | Persisted, add/undo/skip/import, keepers, snake / linear / third-round reversal |
 | 5. Simulation | **Done** | Seeded Monte Carlo availability + strategy comparison |
 | 6. LLM | **Done** | LM Studio via OpenAI-compatible API, structured output, validation |
-| 7. Web UI | **Not started** | Deferred by design |
+| 7. Web UI | **Done** | FastAPI + React live-draft board, verified in a real browser |
 
-359 tests, 86% coverage, clean under `ruff` and `mypy`.
+398 tests, clean under `ruff`, `mypy`, and strict TypeScript.
 
 ### What could not be verified here
 
@@ -30,6 +30,10 @@ fixtures and mock transports, but **not against the live services**:
   covering the healthy path, schema rejection, hallucinated players, and
   unparseable prose. A real model's output style will differ.
 
+The block is a network-policy denial in the build sandbox, not a credentials
+problem: `api.sleeper.app` needs no key, and the egress proxy refuses CONNECT to
+it with a 403 all the same.
+
 Everything that does not touch a network is tested for real.
 
 ---
@@ -40,7 +44,7 @@ Everything that does not touch a network is tested for real.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                          # 359 tests, no network, no model server
+pytest                          # 398 tests, no network, no model server
 pytest --cov=fantasy_ai         # with coverage
 ruff check src tests
 mypy src/fantasy_ai
@@ -69,6 +73,7 @@ approximate.
 | `test_services.py` | Sync orchestration, Sleeper draft import |
 | `test_llm.py` | JSON extraction, schemas, name checking, client transport, retry loop |
 | `test_integration.py` | Full pipeline, draft integration, CLI, cross-league behaviour |
+| `test_api.py` | HTTP wire contract, board caching and invalidation, draft routes, LLM routes |
 
 Some tests exist specifically to pin down behaviour that is easy to break:
 
@@ -88,6 +93,11 @@ Some tests exist specifically to pin down behaviour that is easy to break:
 CLI tests run through the real `run()` entry point rather than Typer's
 `CliRunner`, because `CliRunner` skips the error-to-exit-code mapping and would
 leave that contract unverified.
+
+The web UI was additionally driven end to end in headless Chromium — board
+render, position filter, player drawer, starting a draft, recording picks by
+button and by search, undo, the model-unavailable path, and a 700px viewport —
+because a passing API test says nothing about whether the page works.
 
 ---
 
@@ -147,8 +157,9 @@ existing one — databases in the wild have already applied it.
 
 ### Longer term
 
-- **Web UI** (FastAPI + React), consuming `services/` — the same entry points
-  the CLI uses. Deferred until the engine has proven useful in a real draft.
+- **Web UI polish.** The board, draft controls, player drawer, and
+  recommendation panel are built. Not yet there: a tier-break view, the
+  strategy-comparison simulator, and Sleeper import from the UI.
 - **Model accuracy tracking.** Compare stored projections against actual results
   to measure which sources, and which of our own adjustments, actually helped.
 
@@ -164,6 +175,7 @@ existing one — databases in the wild have already applied it.
 - **The simulator does not model specific opponents** unless you supply profiles.
 - **`analyze board` recomputes from scratch each run.** Fine at this scale
   (~300 players, well under a second), but it is not incremental.
+- **The web UI has no authentication** and binds to localhost. Do not expose it.
 - **CSV files with duplicate column names** (a QB export with passing and rushing
   both labelled `YDS`) will keep only the last. Use grouped-header exports, or
   the API, for those.

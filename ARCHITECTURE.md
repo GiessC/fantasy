@@ -29,7 +29,7 @@ demo generator ───┘                                        ▼
 Imports flow one way only. Nothing below may import from a layer above it.
 
 ```text
-cli/            presentation only: parse args, call a service, render
+cli/  api/       presentation only: parse input, call a service, render output
 services/       orchestration across sources, storage, and analytics
 llm/            context building, prompting, structured-output validation
 draft/          draft order, persisted state, Monte Carlo simulation
@@ -109,10 +109,21 @@ The seam between everything and the CLI. `AnalysisService.board()` is one call
 that resolves config, data, draft state, and simulation into an analysed board —
 the same call a future FastAPI layer would make.
 
-### `cli/`
+### `cli/` and `api/`
 
-Typer + Rich. No analytical logic. Every command has a `--json` form, and
-expected errors become one clean line with a meaningful exit code.
+Two presentation layers over the same services, neither holding analytical
+logic. The CLI is Typer + Rich, with a `--json` form on every command and
+expected errors reduced to one clean line with a meaningful exit code. The API
+is FastAPI, with the same expected errors mapped to structured JSON carrying a
+`hint`, and `web/` is a React + TypeScript frontend it serves.
+
+Because both call `AnalysisService.board()`, the numbers cannot disagree between
+them — which is the whole reason the services layer exists.
+
+The API caches the analysed board against a *state version* derived from the
+draft's pick count and update time, so a polling UI does not recompute a
+one-second analysis per request, and the cache invalidates exactly when a pick
+changes the answer.
 
 ## Data-flow requirements
 
@@ -149,7 +160,9 @@ fantasy/
 │   ├── draft/        order, state, simulator
 │   ├── llm/          client, context, prompts, parsing, schemas, recommender
 │   ├── services/     sync, analysis, draft_import
+│   ├── api/          FastAPI app, schemas, serializers, cached state
 │   └── cli/          main, context, render, commands/
+├── web/              React + TypeScript + Vite frontend
 ├── tests/
 └── data/             databases, HTTP cache, CSV imports (gitignored)
 ```
@@ -160,5 +173,6 @@ No Postgres, Redis, Docker, message queue, or cloud service. A draft assistant
 that runs on one machine for one person needs none of them, and each would add a
 failure mode on the day the tool has to work.
 
-The web UI (FastAPI + React) is deferred until the engine is proven useful, and
-would consume `services/` — the same entry points the CLI uses.
+FastAPI and React are the only additions the web UI brings, and both are
+optional: `pip install fantasy-ai` without the `[web]` extra gives a fully
+working CLI.

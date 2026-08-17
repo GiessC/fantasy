@@ -6,6 +6,7 @@ from .analyze import analyze_app
 from .config_db import data_app, db_app, validate_config
 from .draft import draft_app
 from .llm import ask, llm_app, recommend
+from .serve import serve
 from .simulate import simulate_app
 from .sync import sync_app
 
@@ -17,6 +18,7 @@ __all__ = [
     "draft_app",
     "llm_app",
     "recommend",
+    "serve",
     "simulate_app",
     "sync_app",
     "validate_config",

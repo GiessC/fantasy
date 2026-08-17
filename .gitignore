@@ -22,3 +22,8 @@ data/imports/*
 # Local user configuration (the examples in config/ are tracked)
 config/league.yaml
 config/sources.yaml
+
+# Web UI build artifacts
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo

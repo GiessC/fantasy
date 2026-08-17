@@ -27,6 +27,7 @@ from .commands import (
     draft_app,
     llm_app,
     recommend,
+    serve,
     simulate_app,
     sync_app,
     validate_config,
@@ -44,7 +45,8 @@ app = typer.Typer(
         "  fantasy-ai validate-config\n"
         "  fantasy-ai db init\n"
         "  fantasy-ai sync demo        # or: sync all, with an API key configured\n"
-        "  fantasy-ai analyze board"
+        "  fantasy-ai analyze board\n"
+        "  fantasy-ai serve             # the web UI"
     ),
     no_args_is_help=True,
     add_completion=True,
@@ -62,6 +64,7 @@ app.add_typer(llm_app, name="llm")
 app.command("validate-config")(validate_config)
 app.command("recommend")(recommend)
 app.command("ask")(ask)
+app.command("serve")(serve)
 
 
 def _version_callback(value: bool) -> None:
