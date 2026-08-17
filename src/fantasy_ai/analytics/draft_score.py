@@ -89,7 +89,10 @@ class ScoreComponent:
 
     def describe(self) -> str:
         weight = "" if self.weight == 1.0 else f" x {self.weight:g}"
-        return f"{self.name}: {self.raw:+.1f}{weight} = {self.contribution:+.1f} ({self.description})"
+        return (
+            f"{self.name}: {self.raw:+.1f}{weight} = {self.contribution:+.1f} "
+            f"({self.description})"
+        )
 
 
 @dataclass(slots=True)

@@ -61,10 +61,13 @@ def slot_for_pick(
         slot = index_in_round + 1
     elif draft_type in {"snake", "auction", "third_round_reversal"}:
         reversed_round = round_number % 2 == 0
-        if draft_type == "third_round_reversal" and reversal_round is not None:
-            if round_number >= reversal_round:
-                # From the reversal round onward the parity is inverted.
-                reversed_round = not reversed_round
+        # From the reversal round onward the parity is inverted.
+        if (
+            draft_type == "third_round_reversal"
+            and reversal_round is not None
+            and round_number >= reversal_round
+        ):
+            reversed_round = not reversed_round
         slot = (teams - index_in_round) if reversed_round else (index_in_round + 1)
     else:
         raise DraftStateError(f"Unsupported draft type: {draft_type!r}.")

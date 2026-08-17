@@ -144,7 +144,7 @@ def run() -> int:
     except typer.Abort:
         note("Aborted.")
         return 130
-    except _CLICK_EXCEPTION as exc:  # type: ignore[misc]
+    except _CLICK_EXCEPTION as exc:
         message = getattr(exc, "format_message", None)
         error(message() if callable(message) else str(exc))
         return int(getattr(exc, "exit_code", 1) or 1)

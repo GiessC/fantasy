@@ -399,14 +399,15 @@ class ScoringConfig(_Section):
         for raw_position, override in self.position_overrides.items():
             position = normalize_position(raw_position)
             if position is None:
-                raise ConfigError(f"scoring.position_overrides has an empty position key.")
+                raise ConfigError("scoring.position_overrides has an empty position key.")
             if position not in KNOWN_POSITIONS:
                 raise ConfigError(
                     f"scoring.position_overrides references unknown position {raw_position!r}."
                 )
             if unknown := S.unknown_keys(override.custom):
                 raise ConfigError(
-                    f"scoring.position_overrides.{position}.custom has unknown stat keys: {unknown}."
+                    f"scoring.position_overrides.{position}.custom has unknown "
+                    f"stat keys: {unknown}."
                 )
             fixed[position] = override
         self.position_overrides = fixed

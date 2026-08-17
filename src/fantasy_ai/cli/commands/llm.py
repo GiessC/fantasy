@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import typer
 from rich.panel import Panel
 
+from ...errors import LLMError
 from ...llm import LLMClient, Recommender, build_context
 from ...llm.prompts import build_recommendation_prompt, build_system_prompt
 from ...services import freshness
@@ -137,8 +139,11 @@ def ask(
     cli: CLIContext = ctx.obj
     settings = cli.settings
     if not settings.app.llm.enabled:
-        error("The LLM is disabled (llm.enabled: false in config/sources.yaml).")
-        raise typer.Exit(code=1)
+        raise LLMError(
+            "The LLM is disabled (llm.enabled: false in config/sources.yaml). "
+            "Set it to true, or use 'fantasy-ai analyze board' for the "
+            "deterministic analysis without the model."
+        )
 
     service = cli.analysis()
     context = service.board(simulate=True, iterations=iterations)
@@ -228,6 +233,7 @@ def llm_context(
     if output is not None:
         output.write_text(rendered, encoding="utf-8")
         success(f"Wrote {len(rendered)} bytes to {output}")
+        note(f"Approximately {payload.approximate_tokens()} tokens.")
     else:
-        console.print_json(rendered)
-    note(f"Approximately {payload.approximate_tokens()} tokens.")
+        # Plain, so the context can be piped straight into another tool.
+        sys.stdout.write(rendered + "\n")

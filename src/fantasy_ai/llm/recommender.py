@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..analytics import BoardAnalysis
-from ..config import LLMConfig, LeagueConfig
+from ..config import LeagueConfig, LLMConfig
 from ..draft import DraftStatus, SimulationResult
 from ..errors import LLMError
 from ..logging_setup import get_logger

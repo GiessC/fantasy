@@ -25,7 +25,7 @@ from ..config import AnalyticsConfig, LeagueConfig, SimulationConfig
 from ..logging_setup import get_logger
 from ..models import PlayerData
 from .availability import AvailabilityEstimate, AvailabilityModel
-from .common import ScoredPlayer, rank_map
+from .common import ScoredPlayer
 from .dataset import Dataset
 from .draft_score import DraftScore, compute_draft_score
 from .lineup import Lineup, optimal_lineup
@@ -223,7 +223,9 @@ class AnalyticsEngine:
 
     # -- step 1: projections to points -------------------------------------
 
-    def score_players(self, dataset: Dataset) -> tuple[list[ScoredPlayer], dict[str, ScoringResult], dict[str, str]]:
+    def score_players(
+        self, dataset: Dataset
+    ) -> tuple[list[ScoredPlayer], dict[str, ScoringResult], dict[str, str]]:
         """Project league-adjusted points for every player with a projection."""
         scored: list[ScoredPlayer] = []
         results: dict[str, ScoringResult] = {}
@@ -237,7 +239,8 @@ class AnalyticsEngine:
                 excluded[data.player_id] = "unknown position"
                 continue
             if is_inactive(data.player, data.injury):
-                excluded[data.player_id] = f"inactive ({data.player.status or data.player.injury_status})"
+                status = data.player.status or data.player.injury_status
+                excluded[data.player_id] = f"inactive ({status})"
                 continue
 
             result = self.scorer.score(data.stats, data.position)

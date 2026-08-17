@@ -8,6 +8,7 @@ module owns *how*.  Every table is also available as plain rows, which is what
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -163,8 +164,10 @@ def board_table(
     selected = list(columns) if columns is not None else visible_columns()
     table = Table(title=heading, header_style="bold", expand=False)
     for column in selected:
-        justify = "left" if column in {"Player", "Pos", "Team"} else "right"
-        table.add_column(column, justify=justify, no_wrap=True)
+        if column in {"Player", "Pos", "Team"}:
+            table.add_column(column, justify="left", no_wrap=True)
+        else:
+            table.add_column(column, justify="right", no_wrap=True)
 
     keep = [BOARD_COLUMNS.index(column) for column in selected]
     for index, player in enumerate(players, start=1):
@@ -280,4 +283,10 @@ def print_scarcity(board: BoardAnalysis) -> None:
 
 
 def print_json(payload: Any) -> None:
-    console.print_json(json.dumps(payload, default=str))
+    """Emit machine-readable JSON.
+
+    Written straight to stdout rather than through Rich: ``--json`` output is
+    meant to be piped into ``jq`` or a script, and Rich would add colour codes
+    on a terminal and reflow long lines.
+    """
+    sys.stdout.write(json.dumps(payload, indent=2, default=str) + "\n")

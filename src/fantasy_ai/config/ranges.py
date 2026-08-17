@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from ..errors import ConfigError
 
@@ -85,7 +87,7 @@ def parse_range(key: str | int | float) -> Range:
     )
 
 
-def parse_range_table(table: dict[str | int | float, float]) -> list[tuple[Range, float]]:
+def parse_range_table(table: Mapping[Any, float]) -> list[tuple[Range, float]]:
     """Parse a whole ``{range_key: points}`` table, sorted by lower bound.
 
     Raises when two ranges overlap, since that makes scoring ambiguous.

@@ -17,7 +17,7 @@ the backbone every other source attaches to.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -28,8 +28,6 @@ from ..errors import SourceError
 from ..logging_setup import get_logger
 from ..models import (
     ADPRecord,
-    InjuryRecord,
-    Player,
     ProjectionRecord,
     RankingRecord,
     utcnow,
@@ -110,7 +108,7 @@ class SyncService:
         compiled = self.settings.league.scoring.compile()
         return self.fantasypros.scoring_parameter(compiled.ppr_value)
 
-    def _run(self, dataset: str, source: str, season: int | None):
+    def _run(self, dataset: str, source: str, season: int | None) -> int:
         return self.repos.sync_runs.start(dataset, source, season)
 
     # -- players -----------------------------------------------------------
@@ -197,10 +195,12 @@ class SyncService:
                 )
                 for row, player_id in self._resolve_rows(rows, ctx, "fantasypros")
             ]
+            # Bye weeks must be applied to the index *before* it is flushed,
+            # or they are only ever set in memory and never persisted.
+            self._apply_bye_weeks(rows, ctx)
             ctx.flush(self.repos)
             report.written = self.repos.rankings.add_many(records, sync_run_id=run_id)
             report.skipped = len(records) - report.written
-            self._apply_bye_weeks(rows, ctx)
 
             self.repos.sync_runs.finish(
                 run_id, record_count=report.fetched, inserted_count=report.written,
@@ -569,7 +569,9 @@ class SyncService:
 
         return reports
 
-    def _guarded(self, action, dataset: str, source: str) -> SyncReport:
+    def _guarded(
+        self, action: Callable[[], SyncReport], dataset: str, source: str
+    ) -> SyncReport:
         try:
             return action()
         except SourceError as exc:
@@ -587,7 +589,7 @@ class SyncService:
         source: str,
         *,
         default_position: str | None = None,
-    ):
+    ) -> Iterator[tuple[FantasyProsRow, str]]:
         """Yield ``(row, canonical_player_id)`` for each resolvable row."""
         for row in rows:
             resolved = ctx.index.resolve(

@@ -47,7 +47,10 @@ class Tier:
 
     def explain(self) -> str:
         if self.number == 1:
-            return f"{self.position} Tier 1: {self.size} player(s), {self.top_points:.1f}-{self.bottom_points:.1f} pts"
+            return (
+                f"{self.position} Tier 1: {self.size} player(s), "
+                f"{self.top_points:.1f}-{self.bottom_points:.1f} pts"
+            )
         return (
             f"{self.position} Tier {self.number}: {self.size} player(s), "
             f"{self.top_points:.1f}-{self.bottom_points:.1f} pts "

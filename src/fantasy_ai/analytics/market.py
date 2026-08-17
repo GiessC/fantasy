@@ -33,7 +33,7 @@ information about risk and upside, not about value.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from ..models import ADPRecord, RankingRecord
@@ -279,7 +279,9 @@ def compute_consensus(
     return profiles
 
 
-def _typical_stdev_by_rank(rankings: dict[str, RankingRecord]):
+def _typical_stdev_by_rank(
+    rankings: dict[str, RankingRecord],
+) -> Callable[[float], float | None]:
     """Build a lookup for "normal" expert spread at a given rank.
 
     Uses the median spread of the nearest-ranked players in this dataset, so it

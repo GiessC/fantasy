@@ -28,6 +28,7 @@ from ..errors import ConfigError
 from ..logging_setup import get_logger
 from .app import AppConfig
 from .league import LeagueConfig
+from .positions import IDP_POSITIONS
 
 log = get_logger(__name__)
 
@@ -314,7 +315,7 @@ def validate_settings(settings: Settings) -> list[str]:
         )
     idp_slots = [
         slot for slot in league.starting_slots
-        if any(p in {"DL", "LB", "DB", "DE", "DT", "CB", "S", "IDP"} for p in slot.eligible_positions)
+        if any(p in IDP_POSITIONS for p in slot.eligible_positions)
     ]
     if idp_slots and not any(
         value for key, value in league.scoring.idp.rates().items()

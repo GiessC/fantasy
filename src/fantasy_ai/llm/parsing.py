@@ -56,7 +56,9 @@ def extract_json(text: str) -> Any:
     try:
         return json.loads(balanced)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"the JSON object was malformed ({exc.msg} at position {exc.pos})") from exc
+        raise ValueError(
+            f"the JSON object was malformed ({exc.msg} at position {exc.pos})"
+        ) from exc
 
 
 def _balanced_object(text: str) -> str | None:

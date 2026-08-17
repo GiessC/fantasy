@@ -48,7 +48,10 @@ def draft_start(
             ("Rounds", record.rounds),
             ("Type", record.draft_type),
             ("Your slot", record.user_slot),
-            ("Your picks", ", ".join(str(pick) for pick in manager.user_picks(record)[:8]) + " ..."),
+            (
+                "Your picks",
+                ", ".join(str(pick) for pick in manager.user_picks(record)[:8]) + " ...",
+            ),
         ]
     )
     note("Record picks with: fantasy-ai draft pick \"<player name>\"")
@@ -272,7 +275,9 @@ def draft_import(
     ctx: typer.Context,
     draft_id: str = typer.Option(None, "--draft-id", help="Sleeper draft id."),
     position: int = typer.Option(None, "--position", "-p", help="Your slot, if not resolvable."),
-    create: bool = typer.Option(True, "--create/--no-create", help="Start a local draft if needed."),
+    create: bool = typer.Option(
+        True, "--create/--no-create", help="Start a local draft if needed."
+    ),
 ) -> None:
     """Pull picks from a live Sleeper draft into local state (repeatable)."""
     cli: CLIContext = ctx.obj

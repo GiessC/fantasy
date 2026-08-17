@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from ..config import AnalyticsConfig, LeagueConfig
 from ..db import Repositories
@@ -20,10 +21,15 @@ from ..models import ADPRecord, InjuryRecord, PlayerData, ProjectionRecord, Rank
 log = get_logger(__name__)
 
 
+_SourceRecord = TypeVar(
+    "_SourceRecord", ProjectionRecord, RankingRecord, ADPRecord, InjuryRecord
+)
+
+
 def _pick_by_priority(
-    records: Sequence[ProjectionRecord | RankingRecord | ADPRecord | InjuryRecord],
+    records: Sequence[_SourceRecord],
     priority: Sequence[str],
-):
+) -> _SourceRecord | None:
     """Choose the record whose source ranks highest; ties break on recency."""
     if not records:
         return None

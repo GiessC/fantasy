@@ -209,11 +209,12 @@ class LeagueConfig(BaseModel):
         # Note: rounds may legitimately exceed roster_size (leagues that draft
         # deep and cut down, or that fill IR/taxi from the draft), so that is a
         # warning from validate_settings rather than an error here.
-        if self.draft.reversal_round is not None and self.draft.rounds is not None:
-            if self.draft.reversal_round > self.draft.rounds:
-                raise ConfigError(
-                    "league.draft.reversal_round is beyond the final round."
-                )
+        if (
+            self.draft.reversal_round is not None
+            and self.draft.rounds is not None
+            and self.draft.reversal_round > self.draft.rounds
+        ):
+            raise ConfigError("league.draft.reversal_round is beyond the final round.")
         if self.type == "redraft" and self.keepers.enabled:
             raise ConfigError(
                 "league.keepers.enabled is true but league.type is 'redraft'. "

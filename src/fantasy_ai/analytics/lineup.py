@@ -56,7 +56,11 @@ class Lineup:
 
     @property
     def starters(self) -> list[ScoredPlayer]:
-        return [self.assignments[slot.index] for slot in self.slots if slot.index in self.assignments]
+        return [
+            self.assignments[slot.index]
+            for slot in self.slots
+            if slot.index in self.assignments
+        ]
 
     @property
     def open_slots(self) -> list[LineupSlot]:

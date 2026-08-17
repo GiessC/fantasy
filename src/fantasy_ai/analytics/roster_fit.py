@@ -54,7 +54,10 @@ class RosterNeeds:
         if not self.open_slots:
             return "Starting lineup is full."
         parts = ", ".join(f"{name} x{count}" for name, count in sorted(self.open_slots.items()))
-        return f"Open starting slots: {parts} ({self.picks_remaining} picks left, slack {self.slack})"
+        return (
+            f"Open starting slots: {parts} "
+            f"({self.picks_remaining} picks left, slack {self.slack})"
+        )
 
 
 @dataclass(slots=True)

@@ -148,23 +148,29 @@ def compute_scarcity(
     for position, group in groups.items():
         index_value = position_results[position].scarcity_index
         for offset, player in enumerate(group):
-            def points_after(step: int) -> float:
-                target = offset + step
-                if target < len(group):
-                    return group[target].points
-                return group[-1].points if group else 0.0
-
             tier_entry = tiers.player_tiers.get(player.player_id)
             player_results[player.player_id] = PlayerScarcity(
                 player_id=player.player_id,
                 position=position,
-                next_player_delta=player.points - points_after(1),
-                dropoff_3=player.points - points_after(3),
-                dropoff_5=player.points - points_after(5),
-                dropoff_10=player.points - points_after(10),
+                next_player_delta=player.points - _points_after(group, offset, 1),
+                dropoff_3=player.points - _points_after(group, offset, 3),
+                dropoff_5=player.points - _points_after(group, offset, 5),
+                dropoff_10=player.points - _points_after(group, offset, 10),
                 tier_cliff=tier_entry.points_to_next_tier if tier_entry else 0.0,
                 players_left_in_tier=tier_entry.players_left_in_tier if tier_entry else 0,
                 position_scarcity_index=index_value,
             )
 
     return ScarcityResult(by_position=position_results, by_player=player_results)
+
+
+def _points_after(group: Sequence[ScoredPlayer], offset: int, step: int) -> float:
+    """Points of the player ``step`` slots further down the position's board.
+
+    Past the end of the pool, the last player's projection is used, so a dropoff
+    over a thin position reports the real remaining decline rather than zero.
+    """
+    if not group:
+        return 0.0
+    target = offset + step
+    return group[target].points if target < len(group) else group[-1].points

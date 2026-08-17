@@ -1,0 +1,231 @@
+"""League-adjusted scoring."""
+
+from __future__ import annotations
+
+import pytest
+
+from fantasy_ai.analytics.scoring import (
+    Scorer,
+    expected_games_over,
+    expected_repeat_bonus,
+    expected_tiered_points,
+)
+from fantasy_ai.config.ranges import parse_range_table
+from fantasy_ai.config.scoring import ScoringConfig
+from fantasy_ai.stats import StatLine
+
+
+@pytest.fixture
+def half_ppr() -> Scorer:
+    return Scorer(ScoringConfig.model_validate({"receiving": {"reception": 0.5}}).compile())
+
+
+class TestBasicScoring:
+    def test_quarterback_line(self, half_ppr: Scorer):
+        line = StatLine({
+            "pass_yd": 4500, "pass_td": 32, "pass_int": 11,
+            "rush_yd": 420, "rush_td": 5, "fum_lost": 3,
+        })
+        result = half_ppr.score(line, "QB")
+        expected = 4500 * 0.04 + 32 * 4 + 11 * -2 + 420 * 0.1 + 5 * 6 + 3 * -2
+        assert result.points == pytest.approx(expected)
+
+    def test_receiver_line_uses_ppr_value(self, half_ppr: Scorer):
+        line = StatLine({"rec": 100, "rec_yd": 1300, "rec_td": 9})
+        assert half_ppr.score(line, "WR").points == pytest.approx(
+            100 * 0.5 + 1300 * 0.1 + 9 * 6
+        )
+
+    def test_fractional_scoring_is_exact(self):
+        scorer = Scorer(
+            ScoringConfig.model_validate(
+                {"receiving": {"reception": 0.35, "points_per_yard": 0.085,
+                               "yards_per_point": None}}
+            ).compile()
+        )
+        result = scorer.score(StatLine({"rec": 73, "rec_yd": 942}), "WR")
+        assert result.points == pytest.approx(73 * 0.35 + 942 * 0.085)
+
+    def test_breakdown_sums_to_total(self, half_ppr: Scorer):
+        line = StatLine({"rec": 80, "rec_yd": 1000, "rec_td": 7, "fum_lost": 2})
+        result = half_ppr.score(line, "WR")
+        assert sum(result.breakdown().values()) == pytest.approx(result.points)
+        assert len(result.explain()) == len(result.lines)
+
+    def test_unscored_categories_are_omitted(self, half_ppr: Scorer):
+        result = half_ppr.score(StatLine({"rec_tgt": 150, "rec": 10}), "WR")
+        assert "rec_tgt" not in result.breakdown()
+
+    def test_points_per_game(self, half_ppr: Scorer):
+        result = half_ppr.score(StatLine({"rec_yd": 1700, "meta_games": 17}), "WR")
+        assert result.points_per_game == pytest.approx(10.0)
+
+    def test_zero_stat_line_scores_zero(self, half_ppr: Scorer):
+        assert half_ppr.score(StatLine(), "WR").points == 0.0
+
+
+class TestPositionOverrides:
+    def test_te_premium_applies_only_to_te(self):
+        scorer = Scorer(
+            ScoringConfig.model_validate(
+                {
+                    "receiving": {"reception": 0.5},
+                    "position_overrides": {"TE": {"receiving": {"reception": 1.5}}},
+                }
+            ).compile()
+        )
+        line = StatLine({"rec": 80, "rec_yd": 900})
+        te = scorer.score(line, "TE").points
+        wr = scorer.score(line, "WR").points
+        assert te - wr == pytest.approx(80 * 1.0)
+
+    def test_override_does_not_leak_other_categories(self):
+        scorer = Scorer(
+            ScoringConfig.model_validate(
+                {
+                    "receiving": {"reception": 0.5, "touchdown": 6},
+                    "position_overrides": {"TE": {"receiving": {"reception": 1.0}}},
+                }
+            ).compile()
+        )
+        assert scorer.scoring.rate("rec_td", "TE") == 6
+
+
+class TestKicking:
+    def test_bucketed_field_goals_scored_by_distance(self):
+        scorer = Scorer(
+            ScoringConfig.model_validate(
+                {"kicking": {"field_goal": {"ranges": {"0-39": 3, "40-49": 4, "50+": 5}},
+                             "extra_point": 1}}
+            ).compile()
+        )
+        line = StatLine({
+            "kick_fgm_20_29": 8, "kick_fgm_30_39": 10,
+            "kick_fgm_40_49": 9, "kick_fgm_50_plus": 4, "kick_xpm": 40,
+        })
+        result = scorer.score(line, "K")
+        assert result.points == pytest.approx(8 * 3 + 10 * 3 + 9 * 4 + 4 * 5 + 40)
+
+    def test_total_fgs_do_not_double_count_buckets(self):
+        scorer = Scorer(
+            ScoringConfig.model_validate(
+                {"kicking": {"field_goal": {"ranges": {"0-39": 3, "40-49": 4, "50+": 5}}}}
+            ).compile()
+        )
+        line = StatLine({"kick_fgm": 31, "kick_fgm_30_39": 10, "kick_fgm_40_49": 9,
+                         "kick_fgm_50_plus": 4, "kick_fgm_20_29": 8})
+        result = scorer.score(line, "K")
+        assert "kick_fgm" not in result.breakdown()
+
+    def test_total_only_uses_blended_rate(self):
+        scorer = Scorer(
+            ScoringConfig.model_validate(
+                {"kicking": {"field_goal": {"ranges": {"0-39": 3, "40-49": 4, "50+": 5}}}}
+            ).compile()
+        )
+        result = scorer.score(StatLine({"kick_fgm": 30}), "K")
+        assert 30 * 3 < result.points < 30 * 5
+        assert "blended" in (result.lines[0].note or "")
+
+
+class TestDefenseTiers:
+    def test_points_allowed_uses_expected_tier(self):
+        scorer = Scorer(
+            ScoringConfig.model_validate(
+                {
+                    "defense": {
+                        "sack": 1,
+                        "points_allowed": {
+                            "0": 10, "1-6": 7, "7-13": 4, "14-20": 1,
+                            "21-27": 0, "28-34": -1, "35+": -4,
+                        },
+                    }
+                }
+            ).compile()
+        )
+        # A great defense (14/game) should score more than a bad one (28/game).
+        good = scorer.score(StatLine({"dst_pts_allowed": 14 * 17, "meta_games": 17}), "DST")
+        bad = scorer.score(StatLine({"dst_pts_allowed": 28 * 17, "meta_games": 17}), "DST")
+        assert good.points > bad.points
+        assert "most likely tier" in (good.lines[0].note or "")
+
+    def test_tier_expectation_is_bounded_by_the_table(self):
+        table = tuple(parse_range_table({"0": 10, "1-6": 7, "7-13": 4, "35+": -4}))
+        points, _ = expected_tiered_points(17 * 10, 17, table, 0.45)
+        assert -4 * 17 <= points <= 10 * 17
+
+    def test_no_table_means_no_points(self):
+        points, note = expected_tiered_points(300, 17, (), 0.45)
+        assert points == 0.0
+        assert "no tier table" in note
+
+
+class TestBonuses:
+    def _scorer(self, **bonus) -> Scorer:
+        payload = {"name": "test", "per_game": True, **bonus}
+        return Scorer(
+            ScoringConfig.model_validate(
+                {"rushing": {"yards_per_point": 10}, "bonuses": [payload]}
+            ).compile()
+        )
+
+    def test_per_game_bonus_scales_with_volume(self):
+        scorer = self._scorer(stat="rush_yd", threshold=100, points=3)
+        low = scorer.score(StatLine({"rush_yd": 700, "meta_games": 17}), "RB")
+        high = scorer.score(StatLine({"rush_yd": 1700, "meta_games": 17}), "RB")
+        low_bonus = low.points - 70
+        high_bonus = high.points - 170
+        assert 0 <= low_bonus < high_bonus
+        assert high_bonus < 17 * 3  # cannot exceed every game clearing it
+
+    def test_season_total_bonus_is_all_or_nothing(self):
+        scorer = self._scorer(stat="rush_yd", threshold=1000, points=10, per_game=False)
+        under = scorer.score(StatLine({"rush_yd": 900}), "RB")
+        over = scorer.score(StatLine({"rush_yd": 1100}), "RB")
+        assert under.points == pytest.approx(90)
+        assert over.points == pytest.approx(110 + 10)
+
+    def test_bonus_respects_position_filter(self):
+        scorer = self._scorer(stat="rush_yd", threshold=100, points=3, positions=["RB"])
+        line = StatLine({"rush_yd": 1400, "meta_games": 17})
+        assert scorer.score(line, "RB").points > scorer.score(line, "QB").points
+
+    def test_repeating_bonus_accumulates(self):
+        scorer = self._scorer(stat="rush_yd", threshold=100, points=1, repeat=True)
+        result = scorer.score(StatLine({"rush_yd": 1700, "meta_games": 17}), "RB")
+        assert result.points > 170
+
+    def test_expected_games_over_is_monotone_and_bounded(self):
+        for total in (500, 1000, 1500, 2000):
+            value = expected_games_over(total, 17, 100, 0.55)
+            assert 0 <= value <= 17
+        assert expected_games_over(1700, 17, 100, 0.55) > expected_games_over(
+            900, 17, 100, 0.55
+        )
+
+    def test_expected_games_over_degenerate_inputs(self):
+        assert expected_games_over(0, 17, 100, 0.5) == 0.0
+        assert expected_games_over(1000, 0, 100, 0.5) == 0.0
+        assert expected_games_over(1000, 17, 0, 0.5) == 0.0
+
+    def test_repeat_bonus_terminates_for_tiny_thresholds(self):
+        assert expected_repeat_bonus(1700, 17, 1, 0.5) > 0
+
+
+class TestExplainability:
+    def test_every_line_has_units_rate_and_points(self, half_ppr: Scorer):
+        result = half_ppr.score(
+            StatLine({"rec": 90, "rec_yd": 1200, "rec_td": 8, "fum_lost": 1}), "WR"
+        )
+        for line in result.lines:
+            assert line.points == pytest.approx(line.units * line.rate)
+            assert line.label
+            assert line.describe()
+
+    def test_top_contributors_ordered_by_magnitude(self, half_ppr: Scorer):
+        result = half_ppr.score(
+            StatLine({"rec": 90, "rec_yd": 1200, "rec_td": 8, "fum_lost": 4}), "WR"
+        )
+        top = result.top_contributors(3)
+        magnitudes = [abs(line.points) for line in top]
+        assert magnitudes == sorted(magnitudes, reverse=True)

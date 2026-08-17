@@ -12,22 +12,22 @@ Player identity is a canonical ``player_id`` (see
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .stats import StatLine
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def to_iso(moment: datetime | None) -> str | None:
     if moment is None:
         return None
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
-    return moment.astimezone(timezone.utc).isoformat()
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC).isoformat()
 
 
 def from_iso(text: str | None) -> datetime | None:
@@ -37,7 +37,7 @@ def from_iso(text: str | None) -> datetime | None:
         parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 @dataclass(slots=True)

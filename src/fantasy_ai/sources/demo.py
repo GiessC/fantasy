@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from datetime import datetime
 
 from ..logging_setup import get_logger
 from ..models import (
@@ -288,7 +289,7 @@ def _market_data(
     season: int,
     teams: int,
     rng: random.Random,
-    retrieved,
+    retrieved: datetime,
     scoring_format: str,
 ) -> tuple[list[RankingRecord], list[ADPRecord]]:
     """Build expert rankings and ADP from player quality, with market noise."""
@@ -360,7 +361,7 @@ _INJURY_DESCRIPTIONS = [
 
 
 def _injuries(
-    players: list[Player], season: int, rng: random.Random, retrieved
+    players: list[Player], season: int, rng: random.Random, retrieved: datetime
 ) -> list[InjuryRecord]:
     records: list[InjuryRecord] = []
     statuses = [status for status, _ in _INJURY_POOL]

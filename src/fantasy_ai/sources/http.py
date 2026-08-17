@@ -19,7 +19,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +47,7 @@ class Response:
     status_code: int | None = None
 
     def age_seconds(self) -> float:
-        return (datetime.now(timezone.utc) - self.retrieved_at).total_seconds()
+        return (datetime.now(UTC) - self.retrieved_at).total_seconds()
 
 
 @dataclass(slots=True)
@@ -82,13 +82,13 @@ class HTTPCache:
         except (TypeError, ValueError):
             return None
         if retrieved.tzinfo is None:
-            retrieved = retrieved.replace(tzinfo=timezone.utc)
+            retrieved = retrieved.replace(tzinfo=UTC)
         return payload.get("data"), retrieved
 
     def is_fresh(self, retrieved: datetime) -> bool:
         if self.ttl_seconds <= 0:
             return False
-        age = (datetime.now(timezone.utc) - retrieved).total_seconds()
+        age = (datetime.now(UTC) - retrieved).total_seconds()
         return age < self.ttl_seconds
 
     def write(self, key: str, data: Any) -> None:
@@ -97,7 +97,7 @@ class HTTPCache:
             self._path(key).write_text(
                 json.dumps(
                     {
-                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                        "retrieved_at": datetime.now(UTC).isoformat(),
                         "data": data,
                     },
                     separators=(",", ":"),
@@ -213,7 +213,7 @@ class HTTPSource:
                     if cache_ttl_seconds is not None
                     else self.cache.ttl_seconds
                 )
-                age = (datetime.now(timezone.utc) - retrieved).total_seconds()
+                age = (datetime.now(UTC) - retrieved).total_seconds()
                 if ttl > 0 and age < ttl:
                     log.debug("Cache hit (%.0fs old): %s", age, url)
                     return Response(
@@ -236,7 +236,7 @@ class HTTPSource:
 
         if self.cache is not None and use_cache:
             self.cache.write(cache_key, payload)
-        return Response(data=payload, url=url, retrieved_at=datetime.now(timezone.utc))
+        return Response(data=payload, url=url, retrieved_at=datetime.now(UTC))
 
     def _request_with_retries(
         self, url: str, params: dict[str, Any], headers: dict[str, str] | None

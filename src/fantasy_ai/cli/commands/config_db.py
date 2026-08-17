@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import typer
 
 from ...config import load_settings, validate_settings
@@ -14,7 +16,10 @@ db_app = typer.Typer(help="Database initialisation and inspection.", no_args_is_
 data_app = typer.Typer(help="Stored-data inspection and freshness.", no_args_is_help=True)
 
 
-def validate_config(ctx: typer.Context, as_json: bool = False) -> None:
+def validate_config(
+    ctx: typer.Context,
+    as_json: bool = typer.Option(False, "--json", help="Emit machine-readable output."),
+) -> None:
     """Load and validate configuration, reporting problems and warnings."""
     cli: CLIContext = ctx.obj
     settings = load_settings(
@@ -35,7 +40,7 @@ def validate_config(ctx: typer.Context, as_json: bool = False) -> None:
 
     success(f"Configuration is valid ({settings.league_path.name}, {settings.sources_path.name})")
 
-    summary = settings.league.summary()
+    summary: dict[str, Any] = settings.league.summary()
     key_values(
         [
             ("League", summary["name"]),

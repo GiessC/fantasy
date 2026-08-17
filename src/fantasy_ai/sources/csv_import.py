@@ -31,17 +31,24 @@ log = get_logger(__name__)
 
 SOURCE = "csv"
 
+#: Column-name candidates, written in the canonical form produced by
+#: :func:`_column_key` (lowercase, punctuation stripped, single-spaced).
 _NAME_COLUMNS = ("player", "player name", "name", "playername")
 _TEAM_COLUMNS = ("team", "tm", "player team", "team id")
 _POSITION_COLUMNS = ("pos", "position", "player position")
 _RANK_COLUMNS = ("rk", "rank", "ecr", "overall rank", "rank ecr")
-_ADP_COLUMNS = ("adp", "avg", "average pick", "avg pick")
+_ADP_COLUMNS = ("adp", "average pick", "avg pick", "player adp")
 _BEST_COLUMNS = ("best", "best rank", "min")
 _WORST_COLUMNS = ("worst", "worst rank", "max")
-_AVG_COLUMNS = ("avg rank", "average rank", "avg.")
-_STDEV_COLUMNS = ("std dev", "stdev", "std", "std. dev")
+_AVG_COLUMNS = ("avg", "avg rank", "average rank")
+_STDEV_COLUMNS = ("std dev", "stdev", "std", "stddev", "standard deviation")
 _TIER_COLUMNS = ("tier", "tiers")
 _BYE_COLUMNS = ("bye", "bye week")
+
+#: Columns whose names contain one of these are never treated as a plain value.
+#: FantasyPros rankings exports carry "ECR VS. ADP", a *differential* that would
+#: otherwise be read as an ADP and corrupt every market comparison.
+_COMPARISON_MARKERS = (" vs ", " v ", "diff", "delta")
 
 
 @dataclass(slots=True)
@@ -71,7 +78,10 @@ class CSVImportReport:
     skipped_rows: int = 0
 
     def describe(self) -> list[str]:
-        lines = [f"{self.path.name}: {self.rows} row(s), header on line {self.header_row_index + 1}"]
+        lines = [
+            f"{self.path.name}: {self.rows} row(s), "
+            f"header on line {self.header_row_index + 1}"
+        ]
         if self.mapped_columns:
             lines.append(
                 "stat columns: "
@@ -88,12 +98,24 @@ def _clean(value: str | None) -> str:
     return (value or "").strip()
 
 
+def _column_key(name: str) -> str:
+    """Canonical form of a column header for matching.
+
+    FantasyPros exports use several punctuation styles for the same column
+    (``STD.DEV``, ``Std Dev``, ``AVG.``), so periods and other punctuation are
+    dropped and whitespace collapsed before comparison.
+    """
+    lowered = _clean(name).lower()
+    stripped = "".join(char if char.isalnum() else " " for char in lowered)
+    return " ".join(stripped.split())
+
+
 def _looks_like_header(cells: Sequence[str]) -> bool:
     """A header row names a player column and has several non-empty cells."""
-    lowered = [_clean(cell).lower() for cell in cells]
-    if sum(1 for cell in lowered if cell) < 2:
+    keys = [_column_key(cell) for cell in cells]
+    if sum(1 for key in keys if key) < 2:
         return False
-    return any(cell in _NAME_COLUMNS for cell in lowered)
+    return any(key in _NAME_COLUMNS for key in keys)
 
 
 def _merge_two_row_header(top: Sequence[str], bottom: Sequence[str]) -> list[str]:
@@ -160,12 +182,11 @@ def read_rows(
             report.skipped_rows += 1
             continue
 
+        # Rankings exports encode the position rank in the POS column ("RB4").
         position = normalize_position(
-            _lookup(record, lowered_header, _POSITION_COLUMNS) or position_hint
+            _strip_position_rank(_lookup(record, lowered_header, _POSITION_COLUMNS))
+            or position_hint
         )
-        # Rankings exports encode position rank in the POS column ("RB4").
-        if position is None and position_hint:
-            position = normalize_position(position_hint)
 
         misses: Counter = Counter()
         stats = map_stats(record, source=SOURCE, position=position, misses=misses)
@@ -203,17 +224,37 @@ def read_rows(
 def _lookup(
     record: dict[str, str], lowered_header: Sequence[str], candidates: Sequence[str]
 ) -> str | None:
-    """Case-insensitive column lookup, trying exact then suffix matches."""
-    lowered = {key.lower(): value for key, value in record.items()}
+    """Column lookup by canonical name, trying exact then suffix matches."""
+    del lowered_header  # kept for call-site symmetry
+    normalized = {
+        _column_key(key): value
+        for key, value in record.items()
+        if not any(marker in f" {_column_key(key)} " for marker in _COMPARISON_MARKERS)
+    }
     for candidate in candidates:
-        value = lowered.get(candidate)
+        value = normalized.get(candidate)
         if value:
             return value
     for candidate in candidates:
-        for key, value in lowered.items():
-            if value and (key.endswith(f" {candidate}") or key == candidate):
+        for key, value in normalized.items():
+            if value and key.endswith(f" {candidate}"):
                 return value
     return None
+
+
+def _strip_position_rank(raw: str | None) -> str | None:
+    """``"RB1"`` -> ``"RB"``.
+
+    FantasyPros rankings exports put the positional rank in the POS column.  The
+    rank is already available from the RK column, so only the position matters
+    here -- and leaving the digits attached would create a separate "position"
+    for every rank.
+    """
+    if not raw:
+        return raw
+    text = _clean(raw)
+    trimmed = text.rstrip("0123456789")
+    return trimmed or text
 
 
 def _strip_team_suffix(name: str) -> str:

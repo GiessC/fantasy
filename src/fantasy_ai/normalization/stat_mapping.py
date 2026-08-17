@@ -119,19 +119,45 @@ SOURCE_OVERRIDES: dict[str, dict[str, str]] = {
 }
 
 #: Fields that mean different things depending on the row's position.
+#:
+#: CSV exports in particular use bare ``ATT`` / ``YDS`` / ``TDS`` headers whose
+#: meaning is entirely positional: on a quarterback sheet they are passing, on a
+#: running back sheet rushing, on a receiver sheet receiving.  Guessing one
+#: fixed meaning would silently mis-score whole positions, so the row's position
+#: decides.  A position we cannot determine falls back to ``_default``, and
+#: entries mapping to ``""`` are dropped rather than guessed at.
+_YARDS_BY_POSITION = {
+    "QB": S.PASS_YD, "RB": S.RUSH_YD, "WR": S.REC_YD, "TE": S.REC_YD,
+    "_default": S.RUSH_YD,
+}
+_TDS_BY_POSITION = {
+    "QB": S.PASS_TD, "RB": S.RUSH_TD, "WR": S.REC_TD, "TE": S.REC_TD,
+    "DST": S.DST_TD, "_default": "",
+}
+_ATT_BY_POSITION = {
+    "QB": S.PASS_ATT, "RB": S.RUSH_ATT, "WR": S.RUSH_ATT, "TE": S.RUSH_ATT,
+    "_default": S.RUSH_ATT,
+}
+
 _POSITION_SENSITIVE: dict[str, dict[str, str]] = {
     _key("sacks"): {"DST": S.DST_SACK, "QB": S.PASS_SACKED, "_default": S.IDP_SACK},
     _key("sack"): {"DST": S.DST_SACK, "QB": S.PASS_SACKED, "_default": S.IDP_SACK},
     _key("int"): {"DST": S.DST_INT, "QB": S.PASS_INT, "_default": S.IDP_INT},
     _key("ints"): {"DST": S.DST_INT, "QB": S.PASS_INT, "_default": S.IDP_INT},
-    _key("td"): {"DST": S.DST_TD, "_default": ""},
-    _key("tds"): {"DST": S.DST_TD, "_default": ""},
+    _key("td"): _TDS_BY_POSITION,
+    _key("tds"): _TDS_BY_POSITION,
+    _key("yds"): _YARDS_BY_POSITION,
+    _key("yards"): _YARDS_BY_POSITION,
+    _key("att"): _ATT_BY_POSITION,
+    _key("atts"): _ATT_BY_POSITION,
     _key("ff"): {"_default": S.IDP_FORCED_FUM},
     _key("fr"): {"DST": S.DST_FUM_REC, "_default": S.IDP_FUM_REC},
 }
 
 
-def resolve_field(name: str, *, source: str | None = None, position: str | None = None) -> str | None:
+def resolve_field(
+    name: str, *, source: str | None = None, position: str | None = None
+) -> str | None:
     """Canonical key for a source field name, or ``None`` if unrecognised.
 
     An empty-string mapping means "known but deliberately ignored" (a source's
