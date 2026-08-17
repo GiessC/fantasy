@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import typer
 
-from ...errors import DraftStateError
-from ...services import SleeperDraftImporter
+from ...errors import DataMissingError, DraftStateError
+from ...models import DraftRecord
+from ...services import AnalysisService, SleeperDraftImporter
 from ..context import CLIContext
 from ..render import (
     key_values,
@@ -20,6 +21,35 @@ from ..render import (
 draft_app = typer.Typer(help="Track a live draft.", no_args_is_help=True)
 
 
+def _apply_keepers(service: AnalysisService, record: DraftRecord) -> None:
+    """Record configured keepers, reporting any name that could not be resolved."""
+
+    def resolve(name: str) -> str | None:
+        try:
+            return service.resolve_one(name).player_id
+        except DataMissingError as exc:
+            warn(f"Keeper {name!r}: {exc}")
+            return None
+
+    results = service.drafts.apply_keepers(record, resolve)
+    if not results:
+        return
+    for keeper_name, round_number, player_id in results:
+        if player_id is None:
+            continue
+        note(f"Keeper recorded: {keeper_name} (round {round_number})")
+    unresolved = [name for name, _, player_id in results if player_id is None]
+    if unresolved:
+        warn(
+            f"{len(unresolved)} keeper(s) could not be identified and were skipped. "
+            f"Add them with 'draft pick <name> --at <overall pick>'."
+        )
+    note(
+        "Only your own keepers are known from config. Record other teams' keepers "
+        "with 'draft pick <name> --at <overall pick>'."
+    )
+
+
 @draft_app.command("start")
 def draft_start(
     ctx: typer.Context,
@@ -29,10 +59,15 @@ def draft_start(
     rounds: int = typer.Option(None, "--rounds", min=1),
     draft_type: str = typer.Option(None, "--type", help="snake | linear | third_round_reversal"),
     replace: bool = typer.Option(False, "--replace", help="Abandon any active draft first."),
+    keepers: bool = typer.Option(
+        True, "--keepers/--no-keepers",
+        help="Record the keepers declared in league.keepers.keepers.",
+    ),
 ) -> None:
     """Begin tracking a draft."""
     cli: CLIContext = ctx.obj
-    manager = cli.analysis().drafts
+    service = cli.analysis()
+    manager = service.drafts
     record = manager.start(
         name=name,
         user_slot=position,
@@ -42,6 +77,9 @@ def draft_start(
         replace_active=replace,
     )
     success(f"Started draft {record.draft_id}: {record.name}")
+
+    if keepers and cli.settings.league.keepers.enabled:
+        _apply_keepers(service, record)
     key_values(
         [
             ("Teams", record.teams),

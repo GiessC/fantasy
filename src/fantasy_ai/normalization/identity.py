@@ -167,12 +167,16 @@ class PlayerIndex:
         self._by_id: dict[str, Player] = {}
         self._by_source: dict[tuple[str, str], str] = {}
         self._by_name: dict[str, list[str]] = {}
+        #: Players created or modified since loading, so a sync writes back only
+        #: what actually changed instead of re-upserting the whole player table
+        #: (which is ~11k rows once Sleeper has been synced).
+        self._dirty: set[str] = set()
         for player in players or []:
-            self.add(player)
+            self.add(player, dirty=False)
 
     # -- construction ------------------------------------------------------
 
-    def add(self, player: Player) -> None:
+    def add(self, player: Player, *, dirty: bool = True) -> None:
         if not player.normalized_name:
             player.normalized_name = normalize_name(player.full_name)
         self._by_id[player.player_id] = player
@@ -182,12 +186,27 @@ class PlayerIndex:
         bucket = self._by_name.setdefault(player.normalized_name, [])
         if player.player_id not in bucket:
             bucket.append(player.player_id)
+        if dirty:
+            self._dirty.add(player.player_id)
 
     def link(self, source: str, source_id: str, player_id: str) -> None:
         self._by_source[(source, str(source_id))] = player_id
         player = self._by_id.get(player_id)
-        if player is not None:
+        if player is not None and player.source_ids.get(source) != str(source_id):
             player.source_ids[source] = str(source_id)
+            self._dirty.add(player_id)
+
+    def touch(self, player_id: str) -> None:
+        """Mark a player as needing to be written back."""
+        if player_id in self._by_id:
+            self._dirty.add(player_id)
+
+    def dirty_players(self) -> list[Player]:
+        """Players created or modified since the index was built."""
+        return [self._by_id[pid] for pid in self._dirty if pid in self._by_id]
+
+    def clear_dirty(self) -> None:
+        self._dirty.clear()
 
     # -- lookups -----------------------------------------------------------
 
@@ -322,9 +341,15 @@ class PlayerIndex:
         player = self._by_id.get(player_id)
         if player is None:
             return
+        changed = False
         if player.position is None and position:
             player.position = position
+            changed = True
         if player.team is None and team:
             player.team = team
+            changed = True
         if not player.full_name and name:
             player.full_name = name.strip()
+            changed = True
+        if changed:
+            self._dirty.add(player_id)

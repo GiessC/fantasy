@@ -10,7 +10,7 @@ mid-draft ("I typed the wrong name").
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from ..config import LeagueConfig
@@ -245,6 +245,49 @@ class DraftStateManager:
         return [
             self.record_pick(draft, player_id, source=source) for player_id in player_ids
         ]
+
+    def apply_keepers(
+        self, draft: DraftRecord, resolve: Callable[[str], str | None]
+    ) -> list[tuple[str, int, str | None]]:
+        """Record the keepers declared in ``league.keepers.keepers``.
+
+        The config maps a player name to the round they cost, which is the
+        common house format.  Each keeper is recorded at *your* pick in that
+        round, flagged ``keeper=True``, so the board treats them as already
+        gone and your roster reflects them from the first pick.
+
+        Other teams' keepers are not knowable from your own config; record them
+        with ``draft pick <name> --at <overall>`` as you learn them.
+
+        ``resolve`` maps a name to a canonical player id (or ``None``). Returns
+        ``(name, round, player_id_or_None)`` per keeper, so the caller can
+        report which ones could not be identified.
+        """
+        results: list[tuple[str, int, str | None]] = []
+        if not self.league.keepers.enabled or not self.league.keepers.keepers:
+            return results
+
+        slot_picks = picks_for_slot(
+            draft.user_slot, draft.teams, draft.rounds, draft.draft_type,
+            reversal_round=draft.settings.get("reversal_round"),
+        )
+        for name, round_number in sorted(
+            self.league.keepers.keepers.items(), key=lambda item: item[1]
+        ):
+            if not 1 <= round_number <= len(slot_picks):
+                raise DraftStateError(
+                    f"Keeper {name!r} costs round {round_number}, which is outside "
+                    f"1..{len(slot_picks)} for this draft."
+                )
+            player_id = resolve(name)
+            results.append((name, round_number, player_id))
+            if player_id is None:
+                continue
+            self.record_pick(
+                draft, player_id, overall_pick=slot_picks[round_number - 1],
+                source="keeper", keeper=True,
+            )
+        return results
 
     def undo(self, draft: DraftRecord) -> DraftPick:
         pick = self.repos.drafts.remove_last_pick(draft.draft_id or 0)

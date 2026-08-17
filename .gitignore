@@ -12,9 +12,12 @@ venv/
 .coverage
 htmlcov/
 
-# Local runtime data (databases, HTTP caches, generated exports)
-data/
-!data/.gitkeep
+# Local runtime data (databases, HTTP caches). The imports directory is
+# tracked so 'sync csv' has somewhere to look on a fresh checkout.
+data/*
+!data/imports/
+data/imports/*
+!data/imports/.gitkeep
 
 # Local user configuration (the examples in config/ are tracked)
 config/league.yaml

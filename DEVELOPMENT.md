@@ -7,7 +7,7 @@
 | 1. Foundation | **Done** | Typed YAML config, SQLite + migrations, logging, CLI, env handling |
 | 2. Data ingestion | **Done, API shapes unverified** | Sleeper + FantasyPros + CSV + demo, idempotent, cached |
 | 3. Analytics | **Done** | Scoring, replacement, VOR, tiers, scarcity, market, risk, roster fit, draft score |
-| 4. Draft state | **Done** | Persisted, add/undo/skip/import, snake / linear / third-round reversal |
+| 4. Draft state | **Done** | Persisted, add/undo/skip/import, keepers, snake / linear / third-round reversal |
 | 5. Simulation | **Done** | Seeded Monte Carlo availability + strategy comparison |
 | 6. LLM | **Done** | LM Studio via OpenAI-compatible API, structured output, validation |
 | 7. Web UI | **Not started** | Deferred by design |
@@ -126,10 +126,12 @@ existing one — databases in the wild have already applied it.
 - **Verify FantasyPros against a live key.** Run `sync rankings --verbose` and
   adjust aliases if the field mapping looks wrong.
 - **Verify Sleeper draft import** during a real draft.
+- **Other teams' keepers.** Your own are applied automatically from
+  `league.keepers.keepers`; other teams' have to be entered by hand, because
+  nothing in your config knows them. Importing them from a Sleeper keeper league
+  would close the gap.
 - **Auction support.** Config and validation exist; the simulator models snake
   and linear orders only. Needs a values-over-replacement budget model.
-- **Keeper handling in the draft.** Keepers are configurable and can be recorded
-  as picks, but are not removed from the pool automatically.
 
 ### Medium term
 

@@ -330,3 +330,94 @@ class TestSimulator:
         first = simulator.compare_strategies(players, ["p1"], **kwargs)
         second = simulator.compare_strategies(players, ["p1"], **kwargs)
         assert first[0].mean_starter_points == second[0].mean_starter_points
+
+
+class TestKeepers:
+    """Keepers declared in YAML must land on the board as already-gone players."""
+
+    @pytest.fixture
+    def keeper_league(self):
+        from fantasy_ai.config import LeagueConfig
+
+        return LeagueConfig(
+            name="Keeper League",
+            season=2026,
+            teams=10,
+            type="keeper",
+            roster={"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "BENCH": 6},
+            draft={"type": "snake", "position": 4, "rounds": 13},
+            keepers={
+                "enabled": True,
+                "max_keepers": 2,
+                "cost_rule": "round_penalty",
+                "keepers": {"Kept Back": 3, "Kept Wideout": 7},
+            },
+        )
+
+    @pytest.fixture
+    def manager(self, repos, keeper_league) -> DraftStateManager:
+        repos.players.upsert(
+            [
+                make_player("k1", "Kept Back", "RB"),
+                make_player("k2", "Kept Wideout", "WR"),
+                *[make_player(f"p{i}", f"Player {i}", "RB") for i in range(1, 30)],
+            ]
+        )
+        return DraftStateManager(repos, keeper_league)
+
+    def _resolver(self, repos):
+        def resolve(name: str) -> str | None:
+            from fantasy_ai.normalization.identity import normalize_name
+
+            matches = repos.players.find_by_normalized_name(normalize_name(name))
+            return matches[0].player_id if len(matches) == 1 else None
+
+        return resolve
+
+    def test_keepers_land_on_the_users_picks(self, manager, repos):
+        record = manager.start()
+        results = manager.apply_keepers(record, self._resolver(repos))
+        assert [(name, rnd) for name, rnd, _ in results] == [
+            ("Kept Back", 3), ("Kept Wideout", 7)
+        ]
+
+        picks = {pick.overall_pick: pick for pick in repos.drafts.picks(record.draft_id)}
+        slot_picks = manager.user_picks(record)
+        assert slot_picks[2] in picks       # round 3
+        assert slot_picks[6] in picks       # round 7
+        assert all(pick.keeper for pick in picks.values())
+        assert all(pick.is_user for pick in picks.values())
+        assert all(pick.source == "keeper" for pick in picks.values())
+
+    def test_kept_players_are_on_the_user_roster(self, manager, repos):
+        record = manager.start()
+        manager.apply_keepers(record, self._resolver(repos))
+        status = manager.status(record, {p.player_id: p for p in repos.players.all()})
+        assert set(status.user_player_ids) == {"k1", "k2"}
+        assert status.user_roster.positions == {"RB": 1, "WR": 1}
+
+    def test_unresolvable_keeper_is_reported_not_fatal(self, manager, repos, keeper_league):
+        keeper_league.keepers.keepers = {"Kept Back": 3, "Nobody At All": 5}
+        record = manager.start()
+        results = manager.apply_keepers(record, self._resolver(repos))
+        assert [player_id for _, _, player_id in results] == ["k1", None]
+        assert len(repos.drafts.picks(record.draft_id)) == 1
+
+    def test_keeper_round_outside_the_draft_is_an_error(self, manager, repos, keeper_league):
+        keeper_league.keepers.keepers = {"Kept Back": 99}
+        record = manager.start()
+        with pytest.raises(DraftStateError, match="outside"):
+            manager.apply_keepers(record, self._resolver(repos))
+
+    def test_no_keepers_configured_is_a_no_op(self, repos, league):
+        repos.players.upsert([make_player("p1", "A", "RB")])
+        manager = DraftStateManager(repos, league)
+        record = manager.start()
+        assert manager.apply_keepers(record, lambda name: None) == []
+
+    def test_the_draft_clock_still_starts_at_pick_one(self, manager, repos):
+        """Keepers occupy later rounds; the draft has not begun."""
+        record = manager.start()
+        manager.apply_keepers(record, self._resolver(repos))
+        status = manager.status(record, {})
+        assert status.current_pick == 1

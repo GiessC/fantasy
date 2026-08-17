@@ -260,6 +260,20 @@ normally filled after the draft.
     start_week: 15
 ```
 
+`fantasy-ai draft start` records your declared keepers automatically, at your
+pick in each named round and flagged as keepers — so they leave the board and
+appear on your roster from the first pick, and the draft clock still starts at
+pick 1.
+
+Other teams' keepers cannot be known from your own config. Record them as you
+learn them:
+
+```bash
+fantasy-ai draft pick "Their Keeper" --at 23 --keeper
+```
+
+Use `draft start --no-keepers` to skip the automatic step.
+
 ---
 
 ## `analytics:` and `simulation:`

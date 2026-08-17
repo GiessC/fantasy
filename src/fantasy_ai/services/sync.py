@@ -49,8 +49,18 @@ class SyncContext:
     resolution: ResolutionStats
 
     def flush(self, repos: Repositories) -> int:
-        """Persist any players minted during resolution."""
-        return repos.players.upsert(self.index.players())
+        """Persist players created or modified during resolution.
+
+        Only the dirty subset: after a Sleeper sync the index holds ~11k
+        players, and re-upserting all of them on every FantasyPros sync is pure
+        waste.
+        """
+        pending = self.index.dirty_players()
+        if not pending:
+            return 0
+        written = repos.players.upsert(pending)
+        self.index.clear_dirty()
+        return written
 
 
 class SyncService:
@@ -443,6 +453,7 @@ class SyncService:
                     player = ctx.index.get(player_id)
                     if player is not None and player.bye_week is None:
                         player.bye_week = row.bye_week
+                        ctx.index.touch(player_id)
 
             ctx.flush(self.repos)
             written = (
@@ -615,8 +626,9 @@ class SyncService:
             if player_id is None:
                 continue
             player = ctx.index.get(player_id)
-            if player is not None:
+            if player is not None and player.bye_week != row.bye_week:
                 player.bye_week = row.bye_week
+                ctx.index.touch(player_id)
 
 
 @dataclass(slots=True)
