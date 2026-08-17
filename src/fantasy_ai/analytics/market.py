@@ -94,16 +94,21 @@ class ConsensusProfile:
     our_rank: int | None = None
     #: ``expert_mean - our_rank``; positive means we like him more than the panel.
     model_vs_consensus: float | None = None
-    #: Spread normalised by rank, so disagreement is comparable across the board.
-    disagreement_index: float = 0.0
+    #: This player's expert spread divided by the typical spread at his rank.
+    #: 1.0 is exactly average disagreement; above 1 is unusually polarising.
+    disagreement_index: float = 1.0
+    #: The typical spread the index was measured against, for explanations.
+    typical_stdev: float | None = None
 
     def label(self) -> str:
         if self.expert_stdev is None:
             return "unknown"
-        if self.disagreement_index >= 0.45:
+        if self.disagreement_index >= 1.5:
             return "polarising"
-        if self.disagreement_index >= 0.25:
+        if self.disagreement_index >= 1.15:
             return "some disagreement"
+        if self.disagreement_index <= 0.7:
+            return "strong consensus"
         return "consensus"
 
     def explain(self) -> str:
@@ -118,6 +123,8 @@ class ConsensusProfile:
             parts.append(f"sd {self.expert_stdev:.1f}")
         if self.best is not None and self.worst is not None:
             parts.append(f"range {self.best:.0f}-{self.worst:.0f}")
+        if self.typical_stdev is not None:
+            parts.append(f"typical sd at this rank {self.typical_stdev:.1f}")
         if self.model_vs_consensus is not None:
             direction = "higher" if self.model_vs_consensus > 0 else "lower"
             parts.append(f"we are {abs(self.model_vs_consensus):.1f} ranks {direction}")
@@ -208,9 +215,20 @@ def compute_consensus(
     best/worst/average/stdev over its expert panel).  When several *sources*
     ranked the player, their disagreement is folded in too, since cross-source
     disagreement is the same kind of signal.
+
+    Dispersion is then measured **relative to what is normal at that rank**,
+    using the median spread among nearby-ranked players in this very dataset.
+    Expert spread grows with rank -- everyone agrees about the top pick, nobody
+    agrees about the 150th -- so a raw standard deviation says almost nothing on
+    its own, and any fixed formula for normalising it (``sd / sqrt(rank)`` and
+    friends) is a magic constant that mislabels one end of the board or the
+    other.  Calibrating against the data makes the index self-adjusting: 1.0 is
+    ordinary disagreement for that part of the board, 2.0 is genuinely
+    polarising.
     """
     profiles: dict[str, ConsensusProfile] = {}
     extra_rankings = extra_rankings or {}
+    typical = _typical_stdev_by_rank(rankings)
 
     for player_id, ranking in rankings.items():
         our_rank = our_ranks.get(player_id)
@@ -236,14 +254,13 @@ def compute_consensus(
                 expert_stdev = (expert_stdev**2 + cross_stdev**2) ** 0.5
 
         reference = expert_mean if expert_mean else (ranking.ecr or 0.0)
-        disagreement = 0.0
-        if expert_stdev is not None and reference:
-            # Normalise by sqrt(rank): rank uncertainty naturally grows deeper
-            # into the board, so a flat ratio would call every late player
-            # polarising.
-            disagreement = expert_stdev / max(1.0, reference**0.5)
+        baseline = typical(reference) if reference else None
+        disagreement = 1.0
+        if expert_stdev is not None and baseline:
+            disagreement = expert_stdev / baseline
 
         profiles[player_id] = ConsensusProfile(
+            typical_stdev=baseline,
             player_id=player_id,
             expert_mean=expert_mean,
             expert_median=expert_median,
@@ -260,3 +277,41 @@ def compute_consensus(
             disagreement_index=disagreement,
         )
     return profiles
+
+
+def _typical_stdev_by_rank(rankings: dict[str, RankingRecord]):
+    """Build a lookup for "normal" expert spread at a given rank.
+
+    Uses the median spread of the nearest-ranked players in this dataset, so it
+    adapts to whatever source and season are loaded.  Returns a callable so the
+    sorted arrays are built once rather than per player.
+    """
+    points = sorted(
+        (
+            (record.average if record.average is not None else record.ecr, record.stdev)
+            for record in rankings.values()
+        ),
+        key=lambda item: (item[0] is None, item[0] or 0.0),
+    )
+    ranks = [rank for rank, spread in points if rank is not None and spread is not None]
+    spreads = [spread for rank, spread in points if rank is not None and spread is not None]
+
+    if len(ranks) < 5:
+        return lambda rank: None
+
+    import bisect
+
+    window = max(5, len(ranks) // 12)
+
+    def typical(rank: float) -> float | None:
+        index = bisect.bisect_left(ranks, rank)
+        low = max(0, index - window)
+        high = min(len(spreads), index + window)
+        neighbourhood = spreads[low:high]
+        if not neighbourhood:
+            return None
+        value = median(neighbourhood)
+        # Guard against a degenerate all-zero neighbourhood.
+        return value if value > 1e-6 else None
+
+    return typical

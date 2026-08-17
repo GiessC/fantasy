@@ -287,7 +287,14 @@ class SyncRunRepository:
             ("injuries", "injuries", "retrieved_at", "season"),
         )
         for dataset, table, time_column, season_column in specs:
-            source_expr = "'sleeper'" if table == "players" else "source"
+            # players has no source column; label each row by whichever source
+            # supplied its id, so a demo-populated database does not claim Sleeper.
+            source_expr = (
+                "COALESCE((SELECT s.source FROM player_source_ids s "
+                "WHERE s.player_id = players.player_id LIMIT 1), 'unknown')"
+                if table == "players"
+                else "source"
+            )
             where = ""
             params: tuple = ()
             if season_column and season is not None:
