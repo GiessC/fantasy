@@ -28,7 +28,7 @@ dev = [
 ]
 
 [project.scripts]
-fantasy-ai = "fantasy_ai.cli.main:app"
+fantasy-ai = "fantasy_ai.cli.main:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fantasy_ai"]
