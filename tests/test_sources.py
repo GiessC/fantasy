@@ -664,3 +664,116 @@ class TestDemoSource:
     def test_serialisable(self):
         dataset = demo.generate(2026, seed=3)
         json.dumps(dict(dataset.projections[0].stats))
+
+
+#: A verbatim record from a live ``/players/nfl`` response, trimmed only of
+#: fields we never read. Kept exact -- including the leading space Sleeper ships
+#: in ``gsis_id`` -- because that quirk is precisely what this pins down.
+REAL_SLEEPER_RECORD = {
+    "6462": {
+        "player_id": "6462", "full_name": "Ellis Richardson", "number": 45,
+        "search_first_name": "ellis", "injury_start_date": None, "first_name": "Ellis",
+        "active": True, "fantasy_positions": ["TE"], "stats_id": 887183,
+        "injury_notes": None, "rotoworld_id": None, "yahoo_id": 32262,
+        "status": "Active", "hashtag": "#ellisrichardson-NFL-FA-45",
+        "search_rank": 9999999, "search_full_name": "ellisrichardson",
+        "fantasy_data_id": 21427, "team": None, "years_exp": 3, "swish_id": None,
+        "search_last_name": "richardson", "rotowire_id": 14134, "player_shard": "8",
+        "injury_status": None, "high_school": "Douglas County", "espn_id": 3926590,
+        "age": 26, "sport": "nfl",
+        "sportradar_id": "efd6f3c3-b752-4bc2-a4f2-b776c15c3ec0",
+        "team_abbr": None, "height": "75", "depth_chart_position": None,
+        "last_name": "Richardson", "position": "TE", "depth_chart_order": None,
+        "injury_body_part": None, "weight": "245", "birth_date": "1995-02-12",
+        "gsis_id": " 00-0035057", "college": "Georgia Southern",
+    },
+    "11255": {
+        "player_id": "11255", "full_name": "Nick Amoah", "number": 0,
+        "first_name": "Nick", "active": True, "fantasy_positions": ["OL"],
+        "status": "Active", "search_rank": 9999999, "search_full_name": "nickamoah",
+        "team": None, "years_exp": 3, "swish_id": 1052592, "last_name": "Amoah",
+        "position": "OL", "age": None, "weight": "300", "sport": "nfl",
+    },
+}
+
+
+class TestRealSleeperPayload:
+    """Parsed against a verbatim record from the live API."""
+
+    def _client(self, **overrides) -> SleeperClient:
+        return SleeperClient(
+            SleeperConfig(**overrides),
+            HTTPConfig(max_retries=0),
+            client=transport(lambda request: httpx.Response(200, json={})),
+        )
+
+    def test_every_field_we_read_survives(self):
+        players, _ = self._client().parse_players(REAL_SLEEPER_RECORD)
+        player = next(p for p in players if p.player_id == "sleeper:6462")
+        assert player.full_name == "Ellis Richardson"
+        assert (player.first_name, player.last_name) == ("Ellis", "Richardson")
+        assert player.position == "TE"
+        assert player.team is None            # free agent: team is null, not ""
+        assert player.age == 26.0
+        assert player.years_exp == 3
+        assert player.status == "Active"
+        assert player.injury_status is None
+        assert player.birth_date == "1995-02-12"
+        assert player.college == "Georgia Southern"
+
+    def test_our_normalization_matches_sleepers_own_search_key(self):
+        """Independent confirmation that name normalization is right.
+
+        Sleeper publishes ``search_full_name`` computed by its own code. Ours
+        agreeing with it on real records means the identity layer keys players
+        the same way the source does.
+        """
+        players, _ = self._client(fantasy_positions_only=False).parse_players(
+            REAL_SLEEPER_RECORD
+        )
+        by_id = {player.player_id: player for player in players}
+        for sleeper_id, raw in REAL_SLEEPER_RECORD.items():
+            player = by_id[f"sleeper:{sleeper_id}"]
+            assert player.normalized_name == raw["search_full_name"]
+
+    def test_cross_source_ids_are_collected(self):
+        players, _ = self._client().parse_players(REAL_SLEEPER_RECORD)
+        ids = next(p for p in players if p.player_id == "sleeper:6462").source_ids
+        assert ids["sleeper"] == "6462"
+        assert ids["espn"] == "3926590"
+        assert ids["yahoo"] == "32262"
+        assert ids["rotowire"] == "14134"
+        assert ids["fantasydata"] == "21427"
+        assert "swish" not in ids            # null must not become the string "None"
+
+    def test_gsis_id_whitespace_is_stripped(self):
+        """Sleeper ships ``gsis_id`` as " 00-0035057".
+
+        An unstripped id silently fails to equal the same id from another
+        source, which defeats the entire point of storing cross-source ids.
+        """
+        players, _ = self._client().parse_players(REAL_SLEEPER_RECORD)
+        ids = next(p for p in players if p.player_id == "sleeper:6462").source_ids
+        assert ids["gsis"] == "00-0035057"
+        assert not ids["gsis"].startswith(" ")
+
+    def test_non_fantasy_positions_are_dropped_by_default(self):
+        players, _ = self._client().parse_players(REAL_SLEEPER_RECORD)
+        assert [p.position for p in players] == ["TE"]
+
+    def test_non_fantasy_positions_can_be_kept(self):
+        players, _ = self._client(fantasy_positions_only=False).parse_players(
+            REAL_SLEEPER_RECORD
+        )
+        assert {p.position for p in players} == {"TE", "OL"}
+
+    def test_nose_tackle_maps_into_idp(self):
+        payload = {
+            "999": {
+                "player_id": "999", "full_name": "Interior Guy", "first_name": "Interior",
+                "last_name": "Guy", "position": "NT", "fantasy_positions": ["DL"],
+                "team": "KC", "status": "Active",
+            }
+        }
+        players, _ = self._client().parse_players(payload)
+        assert players[0].position == "DT"

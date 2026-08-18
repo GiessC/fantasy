@@ -5,14 +5,14 @@
 | Phase | State | Notes |
 | --- | --- | --- |
 | 1. Foundation | **Done** | Typed YAML config, SQLite + migrations, logging, CLI, env handling |
-| 2. Data ingestion | **Done, API shapes unverified** | Sleeper + FantasyPros + CSV + demo, idempotent, cached |
+| 2. Data ingestion | **Sleeper player shape verified**; FantasyPros unverified | Sleeper + FantasyPros + CSV + demo, idempotent, cached |
 | 3. Analytics | **Done** | Scoring, replacement, VOR, tiers, scarcity, market, risk, roster fit, draft score |
 | 4. Draft state | **Done** | Persisted, add/undo/skip/import, keepers, snake / linear / third-round reversal |
 | 5. Simulation | **Done** | Seeded Monte Carlo availability + strategy comparison |
 | 6. LLM | **Done** | LM Studio via OpenAI-compatible API, structured output, validation |
 | 7. Web UI | **Done** | FastAPI + React live-draft board, verified in a real browser |
 
-398 tests, clean under `ruff`, `mypy`, and strict TypeScript.
+405 tests, clean under `ruff`, `mypy`, and strict TypeScript.
 
 ### What could not be verified here
 
@@ -23,9 +23,9 @@ fixtures and mock transports, but **not against the live services**:
   configuration, the parser is tolerant, and `--verbose` prints exactly what it
   matched — but the first run against a real key is the real test. CSV import is
   the fallback if shapes have drifted.
-- **Sleeper draft import against a live draft.** The endpoints and payload
-  shapes are well documented and covered by fixture tests; a real drafting
-  session is still the proof.
+- **Sleeper draft/league endpoints.** The *player* payload has now been checked
+  against a real response (see below); the draft and league endpoints have not,
+  and a live drafting session is still the proof.
 - **A real local model.** The LLM loop was exercised against a stub server
   covering the healthy path, schema rejection, hallucinated players, and
   unparseable prose. A real model's output style will differ.
@@ -33,6 +33,20 @@ fixtures and mock transports, but **not against the live services**:
 The block is a network-policy denial in the build sandbox, not a credentials
 problem: `api.sleeper.app` needs no key, and the egress proxy refuses CONNECT to
 it with a 403 all the same.
+
+**Verified against a real `/players/nfl` response** (pasted in by hand, pinned as
+`REAL_SLEEPER_RECORD` in `test_sources.py`). Every field the adapter reads
+survived, and our `normalize_name` produced exactly Sleeper's own
+`search_full_name` on each record — independent confirmation that the identity
+layer keys players the way the source does. It also surfaced two defects:
+
+- `gsis_id` ships with a leading space (`" 00-0035057"`). Unstripped, it would
+  never match the same id from another source, defeating the point of storing
+  cross-source ids at all.
+- Roughly half the payload is offensive linemen, punters, and long snappers that
+  no fantasy format can start. `sources.sleeper.fantasy_positions_only` (default
+  true) now drops them, and `NT` was added as an IDP alias so nose tackles are
+  kept rather than discarded with the linemen.
 
 Everything that does not touch a network is tested for real.
 
@@ -44,7 +58,7 @@ Everything that does not touch a network is tested for real.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                          # 398 tests, no network, no model server
+pytest                          # 405 tests, no network, no model server
 pytest --cov=fantasy_ai         # with coverage
 ruff check src tests
 mypy src/fantasy_ai

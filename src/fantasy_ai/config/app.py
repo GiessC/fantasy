@@ -94,6 +94,11 @@ class SleeperConfig(_Model):
     username: str | None = None
     #: Player metadata is ~5 MB; refresh at most this often.
     player_cache_ttl_seconds: int = Field(default=24 * 3600, ge=0)
+    #: Keep only players at a position some league could start. Sleeper's payload
+    #: carries every offensive lineman, punter, and long snapper -- roughly half
+    #: the ~11k records -- none of which can be drafted in any fantasy format.
+    #: Set false to store the raw payload wholesale.
+    fantasy_positions_only: bool = True
 
 
 class CSVImportConfig(_Model):

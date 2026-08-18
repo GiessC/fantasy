@@ -64,6 +64,7 @@ _POSITION_ALIASES: Final[dict[str, str]] = {
     "OLB": "LB", "ILB": "LB", "MLB": "LB",
     "FS": "S", "SS": "S", "NB": "CB",
     "DE": "DE", "DT": "DT", "CB": "CB", "S": "S", "DL": "DL", "LB": "LB", "DB": "DB",
+    "NT": "DT",  # nose tackle; scores as an interior lineman in IDP leagues
 }
 
 

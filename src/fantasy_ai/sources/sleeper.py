@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import HTTPConfig, SleeperConfig
-from ..config.positions import normalize_position
+from ..config.positions import KNOWN_POSITIONS, normalize_position
 from ..errors import SourceResponseError
 from ..logging_setup import get_logger
 from ..models import InjuryRecord, Player, utcnow
@@ -143,6 +143,7 @@ class SleeperClient(HTTPSource):
         stamp = retrieved_at or utcnow()
         players: list[Player] = []
         injuries: list[InjuryRecord] = []
+        skipped = 0
 
         for sleeper_id, raw in payload.items():
             if not isinstance(raw, dict):
@@ -151,6 +152,13 @@ class SleeperClient(HTTPSource):
                 raw.get("position") or _first(raw.get("fantasy_positions"))
             )
             if position is None:
+                continue
+            # Sleeper ships every player under contract, so roughly half the
+            # payload is offensive linemen, punters, and long snappers that no
+            # fantasy format can start. Storing them bloats the player table and
+            # the identity index for nothing.
+            if self.settings.fantasy_positions_only and position not in KNOWN_POSITIONS:
+                skipped += 1
                 continue
 
             team = normalize_team(raw.get("team"))
@@ -203,7 +211,10 @@ class SleeperClient(HTTPSource):
                     )
                 )
 
-        log.debug("Parsed %d Sleeper players", len(players))
+        log.debug(
+            "Parsed %d Sleeper players (%d skipped as non-fantasy positions)",
+            len(players), skipped,
+        )
         return players, injuries
 
     # -- league and draft --------------------------------------------------
@@ -301,7 +312,7 @@ def _source_ids(sleeper_id: str, raw: dict[str, Any]) -> dict[str, str]:
     These are what let a FantasyPros row attach to an existing canonical player
     without falling back to name matching.
     """
-    ids = {SOURCE: str(sleeper_id)}
+    ids = {SOURCE: str(sleeper_id).strip()}
     for field_name, source in (
         ("espn_id", "espn"),
         ("yahoo_id", "yahoo"),
@@ -313,8 +324,15 @@ def _source_ids(sleeper_id: str, raw: dict[str, Any]) -> dict[str, str]:
         ("swish_id", "swish"),
     ):
         value = raw.get(field_name)
-        if value not in (None, "", 0):
-            ids[source] = str(value)
+        if value in (None, "", 0):
+            continue
+        # Sleeper ships some ids with surrounding whitespace -- gsis_id in
+        # particular arrives as " 00-0035057". An unstripped id silently fails
+        # to match the same id from another source, which is exactly the
+        # name-matching fallback these ids exist to avoid.
+        cleaned = str(value).strip()
+        if cleaned:
+            ids[source] = cleaned
     return ids
 
 

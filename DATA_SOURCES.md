@@ -23,9 +23,16 @@ Four ingestion paths, all writing the same canonical models:
 | `/league/{id}` · `/league/{id}/rosters` · `/league/{id}/drafts` | League state |
 | `/draft/{id}` · `/draft/{id}/picks` | Live draft |
 
+By default only players at a position some league could start are stored
+(`sources.sleeper.fantasy_positions_only`). Sleeper ships every player under
+contract, so roughly half the payload is offensive linemen, punters, and long
+snappers — none draftable in any format. IDP positions are kept.
+
 Sleeper is the **identity backbone**: its ids are stable and widely
 cross-referenced, and its player payload carries ESPN, Yahoo, Rotowire,
-Sportradar and GSIS ids alongside its own. Syncing players first gives every
+Sportradar and GSIS ids alongside its own. Those ids are whitespace-stripped on
+the way in: Sleeper ships `gsis_id` as `" 00-0035057"`, and an unstripped id
+silently fails to match the same id from another source. Syncing players first gives every
 later source something to attach to without name matching.
 
 The player payload is large and changes slowly, so it gets its own long TTL
