@@ -22,14 +22,23 @@ Four observable components, each converted to points via a configurable weight:
     Rookies and players with no established usage carry extra variance. Note
     this is *uncertainty*, not badness -- it widens outcomes in both directions,
     which is why it is reported separately and weighted lightly.
+
+``durability``
+    Share of recent seasons missed, from completed-season games played. Every
+    other component describes the player as he is *today*; this is the only one
+    with a memory, and a currently-healthy player who has broken down twice is
+    otherwise indistinguishable from one who never has. Needs at least two
+    seasons, because one cannot separate a freak injury from a pattern, and is
+    silent when no history is stored rather than assuming durability.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ..config import RiskConfig
-from ..models import InjuryRecord, Player
+from ..models import InjuryRecord, Player, SeasonHistoryRecord
 from .common import clamp
 from .market import ConsensusProfile
 
@@ -58,6 +67,68 @@ INACTIVE_STATUSES = frozenset({"inactive", "retired", "ir", "injured reserve", "
 
 
 @dataclass(slots=True)
+class DurabilityProfile:
+    """Recency-weighted share of recent seasons a player was available for."""
+
+    #: 1.0 = never missed a game across the seasons considered.
+    availability: float
+    seasons_used: int
+    #: (season, games played, games possible), newest first.
+    seasons: list[tuple[int, int, int]] = field(default_factory=list)
+
+    @property
+    def missed_share(self) -> float:
+        return clamp(1.0 - self.availability, 0.0, 1.0)
+
+    def describe(self) -> str:
+        games = ", ".join(
+            f"{season}: {played}/{possible}" for season, played, possible in self.seasons
+        )
+        return f"{self.availability * 100:.0f}% of games played ({games})"
+
+
+def compute_durability(
+    history: Sequence[SeasonHistoryRecord],
+    *,
+    season_weights: Sequence[float] | None = None,
+    min_seasons: int = 2,
+) -> DurabilityProfile | None:
+    """Weight recent seasons more heavily, or return ``None`` if too little is known.
+
+    Returning ``None`` rather than a neutral score matters: absence of history
+    is not evidence of durability, and a rookie must not be quietly credited
+    with a clean bill of health he has not earned.
+    """
+    weights = list(season_weights or (0.5, 0.3, 0.2))
+    usable = [
+        record
+        for record in sorted(history, key=lambda item: item.season, reverse=True)
+        if record.availability is not None
+    ][: len(weights)]
+    if len(usable) < min_seasons:
+        return None
+
+    total_weight = 0.0
+    weighted = 0.0
+    seasons: list[tuple[int, int, int]] = []
+    for record, weight in zip(usable, weights, strict=False):
+        availability = record.availability
+        assert availability is not None  # filtered above
+        weighted += availability * weight
+        total_weight += weight
+        seasons.append(
+            (record.season, int(record.games_played or 0), int(record.games_possible or 0))
+        )
+    if total_weight <= 0:
+        return None
+    return DurabilityProfile(
+        availability=clamp(weighted / total_weight, 0.0, 1.0),
+        seasons_used=len(usable),
+        seasons=seasons,
+    )
+
+
+@dataclass(slots=True)
 class RiskComponent:
     name: str
     raw: float
@@ -78,6 +149,7 @@ class RiskProfile:
     capped: bool = False
     injury_status: str | None = None
     injury_note: str | None = None
+    durability: DurabilityProfile | None = None
 
     @property
     def level(self) -> str:
@@ -121,6 +193,7 @@ def compute_risk(
     injury: InjuryRecord | None = None,
     projected_points: float = 0.0,
     config: RiskConfig | None = None,
+    history: Sequence[SeasonHistoryRecord] | None = None,
 ) -> RiskProfile:
     """Build a player's risk profile."""
     config = config or RiskConfig()
@@ -188,6 +261,23 @@ def compute_risk(
             )
         )
 
+    # 5. Durability, from completed seasons. The only component with a memory.
+    durability = compute_durability(
+        history or (),
+        season_weights=config.durability_season_weights,
+        min_seasons=config.durability_min_seasons,
+    )
+    if durability is not None and durability.missed_share > 0:
+        components.append(
+            RiskComponent(
+                name="durability",
+                raw=durability.missed_share,
+                weight=config.durability_weight,
+                points=durability.missed_share * config.durability_weight,
+                note=durability.describe(),
+            )
+        )
+
     total = sum(item.points for item in components)
     capped = total > config.max_discount_points
     discount = clamp(total, 0.0, config.max_discount_points)
@@ -195,6 +285,7 @@ def compute_risk(
     return RiskProfile(
         player_id=player.player_id,
         components=components,
+        durability=durability,
         discount_points=discount,
         capped=capped,
         injury_status=status,

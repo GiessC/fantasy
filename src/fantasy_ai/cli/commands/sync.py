@@ -175,6 +175,29 @@ def sync_demo(
         service.close()
 
 
+@sync_app.command("history")
+def sync_history(
+    ctx: typer.Context,
+    path: Path = typer.Argument(..., help="A FantasyPros cheat-sheet CSV export."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show what was parsed."),
+    no_adp: bool = typer.Option(
+        False, "--no-adp", help="Store only the past seasons, not the sheet's current ADP."
+    ),
+) -> None:
+    """Import completed seasons (games played, points, ADP) from a cheat sheet.
+
+    History feeds durability and trajectory. It is never used as a projection:
+    what a player scored last year is not a forecast of this year.
+    """
+    cli: CLIContext = ctx.obj
+    service = cli.sync()
+    try:
+        _report([service.sync_history(path, verbose=verbose, import_adp=not no_adp)])
+        note("Try: fantasy-ai analyze player \"<name>\"  to see the durability profile")
+    finally:
+        service.close()
+
+
 @sync_app.command("all")
 def sync_all(
     ctx: typer.Context,

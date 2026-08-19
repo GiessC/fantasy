@@ -273,8 +273,52 @@ _V1 = (
 )
 
 
+#: v2 -- completed-season history. Separate from ``projections`` on purpose:
+#: these are results, not forecasts, and conflating the two would let a past
+#: season be mistaken for a projection of the coming one.
+_V2: tuple[str, ...] = (
+    """
+    CREATE TABLE player_history (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        player_id       TEXT NOT NULL REFERENCES players(player_id) ON DELETE CASCADE,
+        season          INTEGER NOT NULL,
+        source          TEXT NOT NULL,
+        games_played    INTEGER,
+        games_possible  INTEGER,
+        fantasy_points  REAL,
+        points_per_game REAL,
+        adp             REAL,
+        scoring_format  TEXT,
+        content_hash    TEXT NOT NULL,
+        raw_json        TEXT,
+        sync_run_id     INTEGER REFERENCES sync_runs(sync_run_id),
+        retrieved_at    TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX idx_player_history_key
+        ON player_history (player_id, season, source, retrieved_at DESC)
+    """,
+    """
+    CREATE VIEW latest_player_history AS
+    SELECT h.*
+    FROM player_history h
+    JOIN (
+        SELECT player_id, season, source, MAX(retrieved_at) AS newest
+        FROM player_history
+        GROUP BY player_id, season, source
+    ) newest
+      ON h.player_id = newest.player_id
+     AND h.season = newest.season
+     AND h.source = newest.source
+     AND h.retrieved_at = newest.newest
+    """,
+)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(version=1, name="initial_schema", statements=_V1),
+    Migration(version=2, name="player_history", statements=_V2),
 )
 
 #: The schema version a fresh database is created at.

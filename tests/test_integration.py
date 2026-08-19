@@ -518,3 +518,58 @@ class TestCrossLeagueBehaviour:
         assert kickers
         assert all(player.vor.vor <= 0 for player in kickers)
         assert not board.replacement.by_position["K"].has_starting_demand
+
+
+class TestSeasonHistory:
+    """Importing completed seasons, and keeping them out of the projection path."""
+
+    SHEET = (
+        '"Player, Age, Team",,,,ADP,,,\n'
+        "Player,Age,Tm,POS,ADP,ADP-25,FPT-25,Pt/W-25,Gms-25,ADP-24,FPT-24,Pt/W-24,Gms-24\n"
+        "Iron Man,25,KC,RB,1.01,1.04,328,19.3,17,2.01,336.9,19.8,17\n"
+        "Glass Cannon,28,SF,RB,2.06,1.01,120,15.0,8,1.02,40.3,10.1,4\n"
+    )
+
+    def _sheet(self, tmp_path: Path) -> Path:
+        path = tmp_path / "sheet.csv"
+        path.write_text(self.SHEET)
+        return path
+
+    def test_import_stores_history_and_adp(self, settings, repos, tmp_path: Path):
+        report = SyncService(settings, repos).sync_history(self._sheet(tmp_path))
+        assert report.fetched == 2
+        assert report.written > 0
+
+        history = repos.history.by_player()
+        assert len(history) == 2
+        seasons = {r.season for records in history.values() for r in records}
+        assert seasons == {2025, 2024}
+        # The sheet's current ADP lands in the ADP table, usable immediately.
+        assert repos.adp.count() == 2
+
+    def test_history_is_not_stored_as_a_projection(self, settings, repos, tmp_path: Path):
+        # The whole point of a separate table: last season's production must
+        # never be reachable as a forecast of the coming one.
+        SyncService(settings, repos).sync_history(self._sheet(tmp_path))
+        assert repos.projections.count() == 0
+
+    def test_reimporting_the_same_sheet_writes_nothing_new(self, settings, repos, tmp_path: Path):
+        service = SyncService(settings, repos)
+        path = self._sheet(tmp_path)
+        first = service.sync_history(path)
+        second = service.sync_history(path)
+        assert first.written > 0
+        assert second.written == 0
+
+    def test_durability_reaches_the_board(self, settings, repos, tmp_path: Path):
+        SyncService(settings, repos).sync_demo(seed=11)
+        SyncService(settings, repos).sync_history(self._sheet(tmp_path))
+
+        dataset = AnalysisService(settings, repos).dataset()
+        fragile = next(
+            (pid for pid, records in dataset.history.items()
+             if any(r.games_played == 4 for r in records)),
+            None,
+        )
+        assert fragile is not None, "the imported player should be in the dataset's history"
+        assert len(dataset.history[fragile]) == 2

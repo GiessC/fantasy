@@ -19,6 +19,7 @@ from fantasy_ai.normalization.identity import (
 )
 from fantasy_ai.normalization.stat_mapping import map_stats, resolve_field
 from fantasy_ai.sources import csv_import, demo
+from fantasy_ai.sources.cheatsheet import read_cheat_sheet
 from fantasy_ai.sources.fantasypros import FantasyProsClient
 from fantasy_ai.sources.http import HTTPCache, HTTPSource
 from fantasy_ai.sources.sleeper import SleeperClient
@@ -847,3 +848,85 @@ class TestRealSleeperPayload:
         }
         players, _ = self._client().parse_players(payload)
         assert players[0].position == "DT"
+
+
+# ---------------------------------------------------------------------------
+# Cheat-sheet exports (multi-season history)
+# ---------------------------------------------------------------------------
+
+#: Mirrors the real export: a merged title row, a header where 'Rk' repeats
+#: once per ranked metric per season, ADP as round.pick, and '#N/A' filler.
+CHEAT_SHEET = (
+    '"Player, Age, Team, and Position rank",,,,ADP,,ADP 2025-2024,,,,,\n'
+    "Player,Age,Tm,POS,ADP,ADP-25,ADP-24,ADP-23,Rk,Rk,Rk,"
+    "FPT-25,FPT-24,FPT-23,Rk,Rk,Rk,Pt/W-25,Pt/W-24,Pt/W-23,Gms-25,Gms-24,Gms-23\n"
+    "Iron Man,25,KC,RB,1.01,1.04,2.01,3.08,3,6,13,328,336.9,216.1,4,2,10,19.3,19.8,14.4,17,17,17\n"
+    "Glass Cannon,28,SF,RB,2.06,1.01,1.02,1.05,1,1,1,120,40.3,357.8,60,90,1,15.0,10.1,22.4,8,4,16\n"
+    "Sophomore,22,NYJ,WR,4.12,5.02,,,20,,,180,,,30,,,11.2,,,16,,\n"
+    "Rookie Guy,21,DAL,WR,7.03,,,,,,,,,,,,,,,,,,\n"
+    "Kansas City,-,KC,DST,11.05,12.01,,,,,,140,,,10,,,8.2,,,17,,\n"
+    "#N/A,,,,31.00,,,,,,,,,,,,,,,,,\n"
+)
+
+
+@pytest.fixture
+def cheat_sheet(tmp_path: Path) -> Path:
+    path = tmp_path / "cheatsheet.csv"
+    path.write_text(CHEAT_SHEET)
+    return path
+
+
+class TestCheatSheet:
+    def test_reads_players_and_skips_filler(self, cheat_sheet: Path):
+        rows, report = read_cheat_sheet(cheat_sheet)
+        assert [row.name for row in rows] == [
+            "Iron Man", "Glass Cannon", "Sophomore", "Rookie Guy", "Kansas City",
+        ]
+        assert report.skipped_rows == 1          # the '#N/A' row
+        assert report.seasons == [2025, 2024, 2023]
+
+    def test_repeated_rk_columns_do_not_shadow_the_data(self, cheat_sheet: Path):
+        # 'Rk' appears six times here. A dict keyed on the header would keep
+        # only the last, and the season columns beside it would be misread.
+        rows, _ = read_cheat_sheet(cheat_sheet)
+        iron = rows[0]
+        assert [(s.season, s.games_played) for s in iron.seasons] == [
+            (2025, 17), (2024, 17), (2023, 17)
+        ]
+        assert [s.fantasy_points for s in iron.seasons] == [328.0, 336.9, 216.1]
+        assert [s.points_per_game for s in iron.seasons] == [19.3, 19.8, 14.4]
+
+    def test_round_dot_pick_becomes_an_overall_pick(self, cheat_sheet: Path):
+        rows, report = read_cheat_sheet(cheat_sheet)
+        assert report.round_size == 12
+        assert rows[0].adp == 1.0                  # 1.01 -> pick 1
+        assert rows[1].adp == pytest.approx(18.0)  # 2.06 -> (2-1)*12 + 6
+        # 3.08 -> (3-1)*12 + 8 = 32
+        assert rows[0].seasons[2].adp == pytest.approx(32.0)
+
+    def test_pick_numbers_rescale_to_the_league_size(self, cheat_sheet: Path):
+        # The market's ordering holds, but pick 18 of a 12-team draft lands
+        # near pick 15 of a 10-team one, and availability counts picks.
+        rows, report = read_cheat_sheet(cheat_sheet, league_teams=10)
+        assert rows[1].adp == pytest.approx(18.0 * 10 / 12)
+        assert any("scaled" in note for note in report.notes)
+
+    def test_missing_seasons_are_absent_rather_than_zero(self, cheat_sheet: Path):
+        rows, _ = read_cheat_sheet(cheat_sheet)
+        sophomore = next(row for row in rows if row.name == "Sophomore")
+        rookie = next(row for row in rows if row.name == "Rookie Guy")
+        # A season a player did not play is unknown, not a zero-point season.
+        assert [s.season for s in sophomore.seasons] == [2025]
+        assert rookie.seasons == []
+
+    def test_dash_age_on_a_defense_is_not_a_number(self, cheat_sheet: Path):
+        rows, _ = read_cheat_sheet(cheat_sheet)
+        dst = next(row for row in rows if row.position == "DST")
+        assert dst.age is None
+        assert dst.name == "Kansas City"
+
+    def test_a_file_that_is_not_a_cheat_sheet_says_so(self, tmp_path: Path):
+        path = tmp_path / "wrong.csv"
+        path.write_text("Name,Team\nSomebody,KC\n")
+        with pytest.raises(SourceResponseError, match="header row"):
+            read_cheat_sheet(path)

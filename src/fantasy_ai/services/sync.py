@@ -30,10 +30,11 @@ from ..models import (
     ADPRecord,
     ProjectionRecord,
     RankingRecord,
+    SeasonHistoryRecord,
     utcnow,
 )
 from ..normalization.identity import PlayerIndex, ResolutionStats
-from ..sources import csv_import, demo
+from ..sources import cheatsheet, csv_import, demo
 from ..sources.fantasypros import FantasyProsClient, FantasyProsRow, ParseReport
 from ..sources.http import SyncReport
 from ..sources.sleeper import SleeperClient
@@ -469,6 +470,111 @@ class SyncService:
                 f"{len(adp_records)} adp; {ctx.resolution.summary()}"
             )
             report.warnings.append(detail)
+            self.repos.sync_runs.finish(
+                run_id, record_count=report.fetched, inserted_count=written, detail=detail
+            )
+        except SourceError as exc:
+            self.repos.sync_runs.finish(run_id, status="failed", detail=str(exc))
+            raise
+        return report
+
+    def sync_history(
+        self,
+        path: Path,
+        *,
+        context: SyncContext | None = None,
+        verbose: bool = False,
+        import_adp: bool = True,
+    ) -> SyncReport:
+        """Ingest a cheat-sheet export: completed seasons, plus current ADP.
+
+        The past seasons are stored as history, never as projections. They feed
+        durability and trajectory; what a player scored last year is not a
+        forecast of this one, and the two must not be confusable downstream.
+        """
+        season = self.settings.league.season
+        run_id = self._run("history", cheatsheet.SOURCE, season)
+        report = SyncReport(dataset="history", source=cheatsheet.SOURCE, season=season)
+        ctx = context or self.context()
+        scoring_format = self.settings.league.scoring.compile().describe_format()
+
+        try:
+            rows, sheet = cheatsheet.read_cheat_sheet(
+                path, league_teams=self.settings.league.teams
+            )
+            report.fetched = len(rows)
+            report.retrieved_at = utcnow()
+            if verbose:
+                report.warnings.extend(sheet.describe())
+
+            history: list[SeasonHistoryRecord] = []
+            adp_records: list[ADPRecord] = []
+            for row in rows:
+                resolved = ctx.index.resolve(
+                    source=cheatsheet.SOURCE,
+                    source_player_id=None,
+                    name=row.name,
+                    position=row.position,
+                    team=row.team,
+                )
+                if resolved is None:
+                    continue
+                ctx.resolution.record(resolved, row.name)
+                player_id = resolved.player_id
+
+                for entry in row.seasons:
+                    history.append(
+                        SeasonHistoryRecord(
+                            player_id=player_id,
+                            season=entry.season,
+                            source=cheatsheet.SOURCE,
+                            games_played=entry.games_played,
+                            games_possible=(
+                                cheatsheet.GAMES_IN_SEASON
+                                if entry.games_played is not None
+                                else None
+                            ),
+                            fantasy_points=entry.fantasy_points,
+                            points_per_game=entry.points_per_game,
+                            adp=entry.adp,
+                            scoring_format=scoring_format,
+                            retrieved_at=report.retrieved_at,
+                        )
+                    )
+
+                if import_adp and row.adp is not None:
+                    adp_records.append(
+                        ADPRecord(
+                            player_id=player_id,
+                            season=season,
+                            source=cheatsheet.SOURCE,
+                            adp=row.adp,
+                            teams=self.settings.league.teams,
+                            scoring_format=scoring_format,
+                            retrieved_at=report.retrieved_at,
+                        )
+                    )
+
+                player = ctx.index.get(player_id)
+                if player is not None and player.age is None and row.age is not None:
+                    player.age = row.age
+                    ctx.index.touch(player_id)
+
+            ctx.flush(self.repos)
+            written = self.repos.history.add_many(history, sync_run_id=run_id)
+            written += self.repos.adp.add_many(adp_records, sync_run_id=run_id)
+            total = len(history) + len(adp_records)
+            report.written = written
+            report.skipped = total - written
+            detail = (
+                f"{len(history)} season record(s) over {len(rows)} player(s), "
+                f"{len(adp_records)} adp; {ctx.resolution.summary()}"
+            )
+            report.warnings.append(detail)
+            report.warnings.append(
+                "History is stored for durability and trajectory only -- past "
+                "production is never used as a projection."
+            )
             self.repos.sync_runs.finish(
                 run_id, record_count=report.fetched, inserted_count=written, detail=detail
             )

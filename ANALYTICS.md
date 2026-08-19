@@ -404,9 +404,38 @@ draft score as a named, capped discount the user can see and zero out.
 | `injury` | Current designation on a 0–1 severity scale | `injury_weight` |
 | `age` | Years past the position's decline age (RBs early, QBs late) | `age_weight` |
 | `role_uncertainty` | Rookies and players with no track record | `rookie_uncertainty` |
+| `durability` | Share of recent seasons missed, from completed-season games played | `durability_weight` |
 
 Age curves are per-position and configurable (`age_curve`, default QB 34 /
 RB 27 / WR 30 / TE 31).
+
+**Durability** is the only component with a memory. Every other one describes the
+player as he is *today*, which means a currently-healthy player who has broken
+down in two of the last three seasons is otherwise indistinguishable from one who
+has never missed a snap.
+
+```
+availability = Σ (games_played / 17) × w_season  ÷  Σ w_season
+durability   = (1 − availability) × durability_weight
+```
+
+`durability_season_weights` (default `[0.5, 0.3, 0.2]`, newest first) both weights
+and bounds the lookback: a three-year-old injury says much less about this season
+than last year's. With the defaults, the same eight missed games costs about
+twice as much having happened last season as three seasons ago.
+
+Two deliberate silences:
+
+- **Fewer than `durability_min_seasons` (2) seasons produces no charge at all.**
+  One season cannot separate a freak ankle sprain from a fragile player.
+- **No stored history produces no charge**, rather than a neutral or favourable
+  one. Absence of evidence is not evidence of health, and a rookie must not be
+  credited with durability he has not earned — `role_uncertainty` already covers
+  his unknown-ness.
+
+History comes from `fantasy-ai sync history` and lives in its own table, never in
+`projections`: it feeds durability and trajectory, and is never read as a forecast
+of the coming season.
 
 Role uncertainty widens outcomes in *both* directions, which is why it is
 reported separately and weighted lightly — it is not a synonym for "bad".

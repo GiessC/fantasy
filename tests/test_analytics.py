@@ -17,13 +17,18 @@ from fantasy_ai.analytics.replacement import (
     compute_replacement_levels,
     simulate_starter_pool,
 )
-from fantasy_ai.analytics.risk import compute_risk, injury_severity, is_inactive
+from fantasy_ai.analytics.risk import (
+    compute_durability,
+    compute_risk,
+    injury_severity,
+    is_inactive,
+)
 from fantasy_ai.analytics.roster_fit import compute_needs, compute_roster_fit
 from fantasy_ai.analytics.scarcity import compute_scarcity
 from fantasy_ai.analytics.tiers import compute_tiers
 from fantasy_ai.analytics.vor import compute_vor
 from fantasy_ai.config import LeagueConfig, ReplacementConfig, SimulationConfig, TierConfig
-from fantasy_ai.models import ADPRecord, RankingRecord
+from fantasy_ai.models import ADPRecord, RankingRecord, SeasonHistoryRecord
 
 from .conftest import make_player, scored
 
@@ -566,3 +571,77 @@ class TestDraftScore:
         lines = compare_scores(left, right)
         assert lines[0].startswith("Total:")
         assert any("value" in line for line in lines)
+
+
+class TestDurability:
+    """Recency-weighted availability from completed seasons.
+
+    The only risk component with a memory: everything else describes the player
+    as he is today, so a currently-healthy player who has broken down twice is
+    otherwise indistinguishable from one who never has.
+    """
+
+    @staticmethod
+    def _history(*seasons: tuple[int, int]) -> list[SeasonHistoryRecord]:
+        return [
+            SeasonHistoryRecord(
+                player_id="p1", season=year, source="cheatsheet",
+                games_played=games, games_possible=17,
+            )
+            for year, games in seasons
+        ]
+
+    def test_a_full_slate_is_nearly_free(self):
+        profile = compute_durability(self._history((2025, 17), (2024, 17), (2023, 17)))
+        assert profile is not None
+        assert profile.availability == pytest.approx(1.0)
+        assert profile.missed_share == pytest.approx(0.0)
+
+    def test_recent_injuries_cost_more_than_old_ones(self):
+        recent = compute_durability(self._history((2025, 9), (2024, 17), (2023, 17)))
+        old = compute_durability(self._history((2025, 17), (2024, 17), (2023, 9)))
+        assert recent is not None and old is not None
+        # Same games missed, different years. A three-year-old injury says less
+        # about this season than last year's does.
+        assert recent.missed_share > old.missed_share
+
+    def test_chronic_beats_one_bad_year(self):
+        chronic = compute_durability(self._history((2025, 9), (2024, 12), (2023, 11)))
+        one_off = compute_durability(self._history((2025, 16), (2024, 17), (2023, 9)))
+        assert chronic is not None and one_off is not None
+        assert chronic.missed_share > one_off.missed_share
+
+    def test_too_little_history_yields_no_opinion(self):
+        # Absence of history is not evidence of durability. A rookie must not be
+        # credited with a clean bill of health he has not earned, and one season
+        # cannot separate a freak injury from a pattern.
+        assert compute_durability([]) is None
+        assert compute_durability(self._history((2025, 17))) is None
+        assert compute_durability(self._history((2025, 17)), min_seasons=1) is not None
+
+    def test_only_the_weighted_seasons_are_considered(self):
+        # Three weights means three seasons, however many are supplied.
+        profile = compute_durability(
+            self._history((2025, 17), (2024, 17), (2023, 17), (2022, 1), (2021, 1))
+        )
+        assert profile is not None
+        assert profile.seasons_used == 3
+        assert profile.availability == pytest.approx(1.0)
+
+    def test_risk_charges_for_it_and_explains_itself(self):
+        fragile = compute_risk(
+            make_player("p1", "Fragile Guy", "RB", age=25.0),
+            history=self._history((2025, 9), (2024, 12), (2023, 11)),
+        )
+        durable = compute_risk(
+            make_player("p2", "Iron Guy", "RB", age=25.0),
+            history=self._history((2025, 17), (2024, 17), (2023, 17)),
+        )
+        assert fragile.discount_points > durable.discount_points
+        component = fragile.component("durability")
+        assert component is not None
+        assert "9/17" in component.note
+
+    def test_no_history_means_no_durability_charge(self):
+        profile = compute_risk(make_player("p3", "Unknown Guy", "RB", age=25.0))
+        assert profile.component("durability") is None

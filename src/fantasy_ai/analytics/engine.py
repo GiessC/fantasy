@@ -347,6 +347,7 @@ class AnalyticsEngine:
                 injury=data.injury,
                 projected_points=player.points,
                 config=self.config.risk,
+                history=dataset.history.get(player.player_id),
             )
             scarcity_entry = scarcity.by_player.get(player.player_id)
             score = compute_draft_score(

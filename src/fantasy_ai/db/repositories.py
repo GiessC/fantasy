@@ -23,6 +23,7 @@ from ..models import (
     Player,
     ProjectionRecord,
     RankingRecord,
+    SeasonHistoryRecord,
     from_iso,
     to_iso,
     utcnow,
@@ -769,6 +770,84 @@ class InjuryRepository(_SnapshotRepository):
 # ---------------------------------------------------------------------------
 
 
+class PlayerHistoryRepository(_SnapshotRepository):
+    """Completed-season results, append-only like every other fact table."""
+
+    table = "player_history"
+    key_columns = ("player_id", "season", "source")
+
+    def add_many(
+        self, records: Iterable[SeasonHistoryRecord], *, sync_run_id: int | None = None
+    ) -> int:
+        rows = list(records)
+        if not rows:
+            return 0
+        existing = self._newest_hash_map()
+        payload: list[tuple] = []
+        for record in rows:
+            digest = content_hash(
+                {
+                    "games_played": record.games_played,
+                    "games_possible": record.games_possible,
+                    "fantasy_points": record.fantasy_points,
+                    "points_per_game": record.points_per_game,
+                    "adp": record.adp,
+                }
+            )
+            key = (record.player_id, str(record.season), record.source)
+            if existing.get(key) == digest:
+                continue
+            payload.append(
+                (
+                    record.player_id, record.season, record.source,
+                    record.games_played, record.games_possible, record.fantasy_points,
+                    record.points_per_game, record.adp, record.scoring_format,
+                    digest, json_dumps(record.raw), sync_run_id,
+                    to_iso(record.retrieved_at),
+                )
+            )
+        if not payload:
+            return 0
+        with self.db.transaction() as connection:
+            connection.executemany(
+                """
+                INSERT INTO player_history (
+                    player_id, season, source, games_played, games_possible,
+                    fantasy_points, points_per_game, adp, scoring_format,
+                    content_hash, raw_json, sync_run_id, retrieved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                payload,
+            )
+        return len(payload)
+
+    def by_player(self, *, source: str | None = None) -> dict[str, list[SeasonHistoryRecord]]:
+        """Newest season first, per player, from the latest snapshot of each."""
+        sql = "SELECT * FROM latest_player_history"
+        params: tuple = ()
+        if source is not None:
+            sql += " WHERE source = ?"
+            params = (source,)
+        sql += " ORDER BY player_id, season DESC"
+        grouped: dict[str, list[SeasonHistoryRecord]] = {}
+        for row in self.db.query(sql, params):
+            grouped.setdefault(str(row["player_id"]), []).append(
+                SeasonHistoryRecord(
+                    player_id=str(row["player_id"]),
+                    season=int(row["season"]),
+                    source=str(row["source"]),
+                    games_played=row["games_played"],
+                    games_possible=row["games_possible"],
+                    fantasy_points=row["fantasy_points"],
+                    points_per_game=row["points_per_game"],
+                    adp=row["adp"],
+                    scoring_format=row["scoring_format"],
+                    retrieved_at=from_iso(row["retrieved_at"]) or utcnow(),
+                )
+            )
+        return grouped
+
+
 class DraftRepository:
     def __init__(self, db: Database) -> None:
         self.db = db
@@ -928,13 +1007,14 @@ class Repositories:
         self.rankings = RankingRepository(db)
         self.adp = ADPRepository(db)
         self.injuries = InjuryRepository(db)
+        self.history = PlayerHistoryRepository(db)
         self.sync_runs = SyncRunRepository(db)
         self.drafts = DraftRepository(db)
 
     def sources_present(self) -> dict[str, int]:
         """Every source with stored facts, and how many rows each contributed."""
         counts: dict[str, int] = {}
-        for table in ("projections", "rankings", "adp", "injuries"):
+        for table in ("projections", "rankings", "adp", "injuries", "player_history"):
             rows = self.db.query(
                 f"SELECT source, COUNT(*) AS n FROM {table} GROUP BY source"  # noqa: S608
             )
@@ -952,7 +1032,7 @@ class Repositories:
         by this source as well survives.
         """
         removed: dict[str, int] = {}
-        for name in ("projections", "rankings", "adp", "injuries"):
+        for name in ("projections", "rankings", "adp", "injuries", "history"):
             count = getattr(self, name).delete_source(source)
             if count:
                 removed[name] = count
@@ -969,6 +1049,7 @@ class Repositories:
               AND player_id NOT IN (SELECT player_id FROM rankings)
               AND player_id NOT IN (SELECT player_id FROM adp)
               AND player_id NOT IN (SELECT player_id FROM injuries)
+              AND player_id NOT IN (SELECT player_id FROM player_history)
             """
         )
         if cursor.rowcount and cursor.rowcount > 0:

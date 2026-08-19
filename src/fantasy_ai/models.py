@@ -40,6 +40,11 @@ def from_iso(text: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def clamp01(value: float) -> float:
+    """Constrain a ratio to [0, 1]; a partial season can still overshoot."""
+    return max(0.0, min(1.0, value))
+
+
 @dataclass(slots=True)
 class Player:
     """A canonical player (or team defense)."""
@@ -140,6 +145,38 @@ class ADPRecord:
     scoring_format: str | None = None
     retrieved_at: datetime = field(default_factory=utcnow)
     raw: dict[str, Any] | None = None
+
+
+@dataclass(slots=True)
+class SeasonHistoryRecord:
+    """What a player actually did in a completed season.
+
+    Deliberately not a :class:`ProjectionRecord`: these are results, and letting
+    a past season masquerade as a forecast is how "he scored 300 last year"
+    turns into a draft-day mistake. Analytics reads history for *durability and
+    trajectory* only -- never as a substitute for a projection.
+    """
+
+    player_id: str
+    season: int
+    source: str
+    games_played: int | None = None
+    #: Games the player could have played -- 17 for a modern full season.
+    games_possible: int | None = None
+    fantasy_points: float | None = None
+    points_per_game: float | None = None
+    #: Where the market drafted him that year, as an overall pick number.
+    adp: float | None = None
+    scoring_format: str | None = None
+    retrieved_at: datetime = field(default_factory=utcnow)
+    raw: dict[str, Any] | None = None
+
+    @property
+    def availability(self) -> float | None:
+        """Share of the season actually played, or ``None`` when unknown."""
+        if self.games_played is None or not self.games_possible:
+            return None
+        return clamp01(self.games_played / self.games_possible)
 
 
 @dataclass(slots=True)

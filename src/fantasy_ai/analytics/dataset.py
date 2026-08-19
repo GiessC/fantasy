@@ -16,7 +16,14 @@ from ..config import AnalyticsConfig, LeagueConfig
 from ..db import Repositories
 from ..errors import DataMissingError
 from ..logging_setup import get_logger
-from ..models import ADPRecord, InjuryRecord, PlayerData, ProjectionRecord, RankingRecord
+from ..models import (
+    ADPRecord,
+    InjuryRecord,
+    PlayerData,
+    ProjectionRecord,
+    RankingRecord,
+    SeasonHistoryRecord,
+)
 
 log = get_logger(__name__)
 
@@ -53,6 +60,9 @@ class Dataset:
     all_rankings: dict[str, list[RankingRecord]] = field(default_factory=dict)
     source_usage: dict[str, dict[str, int]] = field(default_factory=dict)
     excluded: dict[str, str] = field(default_factory=dict)
+    #: Completed seasons per player, newest first. Read for durability and
+    #: trajectory only -- never as a projection of the coming season.
+    history: dict[str, list[SeasonHistoryRecord]] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.players)
@@ -149,6 +159,9 @@ def load_dataset(
         )
 
     dataset.source_usage = usage
+    # Every stored season, not just the target one: durability is a multi-year
+    # property and the newest completed season precedes the one being drafted.
+    dataset.history = repos.history.by_player()
     log.debug(
         "Loaded dataset for %s: %d players, %d with projections",
         target_season, len(dataset.players), len(dataset.with_projections()),

@@ -148,6 +148,42 @@ POS column.
 
 ---
 
+## Cheat-sheet history
+
+```bash
+fantasy-ai sync history data/imports/cheat_sheet.csv --verbose
+```
+
+FantasyPros' "cheat sheet" export carries current ADP alongside several
+completed seasons — points, points per game, games played, and that year's ADP.
+It gets its own reader because the shape defeats the general CSV path:
+
+- a **title row above the header** with merged group labels,
+- **`Rk` repeated nine times** (once per ranked metric per season), so a
+  name-keyed dict keeps only the last and misreads the columns beside it,
+- **season-suffixed columns** (`FPT-25`, `Gms-24`) carrying the history,
+- **ADP written as `round.pick`** — `3.08` is round 3, pick 8, not the number
+  3.08. It is converted to an overall pick, with the draft size detected from
+  the largest pick suffix in the file and rescaled when your league is a
+  different size (pick 32 of a 12-team draft is about pick 27 of a 10-team one).
+- `#N/A` filler rows, skipped.
+
+**History is never a projection.** It is stored in its own `player_history`
+table, not in `projections`, precisely so past production cannot be mistaken for
+a forecast. Analytics reads it for two things only:
+
+- **Durability** — a recency-weighted share of recent seasons actually played,
+  which becomes a named risk component. Needs at least two seasons; with fewer,
+  no charge is made, because absence of history is not evidence of health.
+- **Trajectory** — the per-season table shown by `analyze player`, where a rising
+  and a flat career with the same average become visibly different.
+
+The sheet's current ADP is imported too, which makes this a usable ADP source on
+its own when the FantasyPros API is rate limiting you. It carries no projections,
+so you still need those from somewhere.
+
+---
+
 ## Demo source
 
 ```bash

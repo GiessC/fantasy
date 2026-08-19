@@ -304,6 +304,20 @@ class RiskConfig(_Model):
     )
     #: Rookies and players with no track record carry uncertainty both ways.
     rookie_uncertainty: float = Field(default=0.5, ge=0.0)
+    #: Points charged per unit of *missed* season, from completed-season games
+    #: played. A player who has missed a third of the last few years scores
+    #: 0.33 here. Requires history ('fantasy-ai sync history --from-csv'); with
+    #: none stored, no charge is made rather than a guess.
+    durability_weight: float = Field(default=14.0, ge=0.0)
+    #: Weight on each past season, newest first. A three-year-old injury says
+    #: much less than last year's, and the list also decides how far back to
+    #: look at all.
+    durability_season_weights: list[float] = Field(
+        default_factory=lambda: [0.5, 0.3, 0.2]
+    )
+    #: Seasons of history needed before a durability charge applies. One season
+    #: cannot distinguish a freak injury from a fragile player.
+    durability_min_seasons: int = Field(default=2, ge=1, le=5)
     #: Cap on the total risk discount, in points, so risk never dominates value.
     max_discount_points: float = Field(default=25.0, ge=0.0)
 

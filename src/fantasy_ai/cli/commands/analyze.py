@@ -15,6 +15,7 @@ from ..render import (
     print_replacement_levels,
     print_scarcity,
     print_scoring_breakdown,
+    print_season_history,
     print_tiers,
     title,
     warn,
@@ -187,6 +188,7 @@ def analyze_player(
         return
 
     print_player_detail(analysis)
+    print_season_history(analysis.name, context.dataset.history.get(player.player_id, []))
     if breakdown:
         print_scoring_breakdown(analysis)
 

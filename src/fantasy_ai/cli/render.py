@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from ..analytics import BoardAnalysis, PlayerAnalysis
+from ..models import SeasonHistoryRecord
 
 console = Console()
 error_console = Console(stderr=True)
@@ -200,6 +201,37 @@ def print_player_detail(player: PlayerAnalysis) -> None:
             border_style=POSITION_STYLES.get(player.position, "white"),
         )
     )
+
+
+def print_season_history(name: str, history: Sequence[SeasonHistoryRecord]) -> None:
+    """Past seasons, newest first.
+
+    Shown as a table rather than folded into a single number because the shape
+    is the information: 8.1 -> 11.4 -> 14.2 per game and a flat 14.2 average to
+    the same three seasons, and only one of those is a player to draft.
+    """
+    if not history:
+        return
+    table = Table(title=f"{name} -- completed seasons (history, not a projection)")
+    table.add_column("Season")
+    table.add_column("Games", justify="right")
+    table.add_column("Points", justify="right")
+    table.add_column("Pts/game", justify="right")
+    table.add_column("ADP", justify="right")
+    for record in sorted(history, key=lambda item: item.season, reverse=True):
+        games = (
+            f"{record.games_played}/{record.games_possible}"
+            if record.games_played is not None and record.games_possible
+            else "-"
+        )
+        table.add_row(
+            str(record.season),
+            games,
+            f"{record.fantasy_points:.1f}" if record.fantasy_points is not None else "-",
+            f"{record.points_per_game:.1f}" if record.points_per_game is not None else "-",
+            f"{record.adp:.0f}" if record.adp is not None else "-",
+        )
+    console.print(table)
 
 
 def print_scoring_breakdown(player: PlayerAnalysis, limit: int = 12) -> None:
