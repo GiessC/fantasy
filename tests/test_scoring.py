@@ -277,3 +277,57 @@ class TestTeamDefensivePlays:
             "DST tackles for loss",
             "DST forced fumbles",
         }
+
+
+class TestSpecialTeams:
+    """Team-credited and player-credited special teams are separate lines.
+
+    A league that scores both lists them as two rules, so one play must not
+    be paid for twice by collapsing them onto a shared key.
+    """
+
+    @staticmethod
+    def _scorer() -> Scorer:
+        return Scorer(
+            ScoringConfig.model_validate(
+                {
+                    "defense": {
+                        "special_teams_touchdown": 6,
+                        "special_teams_forced_fumble": 1,
+                        "special_teams_fumble_recovery": 1,
+                    },
+                    "special_teams_player": {
+                        "touchdown": 6,
+                        "forced_fumble": 1,
+                        "fumble_recovery": 1,
+                    },
+                }
+            ).compile()
+        )
+
+    def test_team_credited_special_teams(self):
+        result = self._scorer().score(
+            StatLine({"dst_st_td": 2, "dst_st_forced_fum": 3, "dst_st_fum_rec": 1}), "DST"
+        )
+        assert result.points == pytest.approx(2 * 6 + 3 + 1)
+
+    def test_player_credited_special_teams(self):
+        result = self._scorer().score(
+            StatLine({"st_player_td": 1, "st_player_forced_fum": 2, "st_player_fum_rec": 1}),
+            "WR",
+        )
+        assert result.points == pytest.approx(6 + 2 + 1)
+
+    def test_the_two_do_not_share_a_key(self):
+        scorer = self._scorer()
+        team = scorer.score(StatLine({"dst_st_td": 1}), "DST").points
+        player = scorer.score(StatLine({"st_player_td": 1}), "WR").points
+        both = scorer.score(StatLine({"dst_st_td": 1, "st_player_td": 1}), "DST").points
+        assert team == pytest.approx(6)
+        assert player == pytest.approx(6)
+        assert both == pytest.approx(12)
+
+    def test_fumble_recovery_touchdown_needs_no_new_configuration(self):
+        # fumbles.return_touchdown already covers it, and defaults to 6.
+        scorer = Scorer(ScoringConfig.model_validate({}).compile())
+        assert scorer.score(StatLine({"fum_td": 1}), "RB").points == pytest.approx(6)

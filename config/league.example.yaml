@@ -63,6 +63,10 @@ league:
       # fourth_down_stop: 2
       # tackle_for_loss: 0.5
       # forced_fumble: 1
+      # Special-teams plays credited to the team unit:
+      # special_teams_touchdown: 6
+      # special_teams_forced_fumble: 1
+      # special_teams_fumble_recovery: 1
       points_allowed:
         "0": 10
         "1-6": 7
@@ -71,6 +75,18 @@ league:
         "21-27": 0
         "28-34": -1
         "35+": -4
+
+    # The same special-teams plays when credited to a named player (a returner,
+    # say) rather than the team unit. Leagues that score both list them
+    # separately, so they are separate here too.
+    # special_teams_player:
+    #   touchdown: 6
+    #   forced_fumble: 1
+    #   fumble_recovery: 1
+
+    # Fumble recovery TD is already covered and defaults to 6:
+    # fumbles:
+    #   return_touchdown: 6
 
     # TE premium and other per-position deltas. Only the values you list are
     # overridden; everything else inherits from the sections above.

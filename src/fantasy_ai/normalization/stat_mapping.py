@@ -82,6 +82,18 @@ for _canonical, _names in {
     S.DST_BLK: ("dst_blk", "blocked kicks", "blk", "blocks"),
     S.DST_PTS_ALLOWED: ("dst_pts_allowed", "points allowed", "pa", "pts allowed", "ptsallow"),
     S.DST_YDS_ALLOWED: ("dst_yds_allowed", "yards allowed", "yds allowed", "ydsagn", "ya"),
+    S.DST_ST_TD: ("dst_st_td", "special teams td", "special teams touchdown", "st td"),
+    S.DST_ST_FORCED_FUM: ("dst_st_forced_fum", "special teams forced fumble", "st ff"),
+    S.DST_ST_FUM_REC: ("dst_st_fum_rec", "special teams fumble recovery", "st fr"),
+    S.ST_PLAYER_TD: (
+        "st_player_td", "special teams player td", "special teams player touchdown",
+    ),
+    S.ST_PLAYER_FORCED_FUM: (
+        "st_player_forced_fum", "special teams player forced fumble",
+    ),
+    S.ST_PLAYER_FUM_REC: (
+        "st_player_fum_rec", "special teams player fumble recovery",
+    ),
     S.DST_TACKLE_LOSS: ("dst_tackle_loss", "dst tackles for loss", "team tackles for loss"),
     S.DST_FORCED_FUM: ("dst_forced_fum", "dst forced fumbles", "team forced fumbles"),
     S.DST_FOURTH_DOWN_STOP: (

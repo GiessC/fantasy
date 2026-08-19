@@ -110,11 +110,25 @@ DST_SAFETY: Final = "dst_safety"
 DST_BLK: Final = "dst_blk"
 DST_PTS_ALLOWED: Final = "dst_pts_allowed"
 DST_YDS_ALLOWED: Final = "dst_yds_allowed"
+#: Special-teams plays credited to the team unit, which many leagues score
+#: separately from the same play made by a named player (see ST_PLAYER_* below).
+DST_ST_TD: Final = "dst_st_td"
+DST_ST_FORCED_FUM: Final = "dst_st_forced_fum"
+DST_ST_FUM_REC: Final = "dst_st_fum_rec"
 DST_TACKLE_LOSS: Final = "dst_tackle_loss"
 DST_FORCED_FUM: Final = "dst_forced_fum"
 #: A defensive stop on fourth down. Team-level equivalent of a "get off the
 #: field" play; scored by some leagues, published by very few sources.
 DST_FOURTH_DOWN_STOP: Final = "dst_fourth_down_stop"
+
+# --------------------------------------------------------------------------
+# Special teams, credited to an individual player rather than the team unit
+# (a returner, or whoever recovers a blocked punt). Distinct keys because a
+# league that scores both would otherwise pay twice for one play.
+# --------------------------------------------------------------------------
+ST_PLAYER_TD: Final = "st_player_td"
+ST_PLAYER_FORCED_FUM: Final = "st_player_forced_fum"
+ST_PLAYER_FUM_REC: Final = "st_player_fum_rec"
 
 # --------------------------------------------------------------------------
 # IDP
@@ -153,6 +167,8 @@ SCORING_KEYS: Final[frozenset[str]] = frozenset(
         DST_SACK, DST_INT, DST_FUM_REC, DST_TD, DST_SAFETY, DST_BLK,
         DST_PTS_ALLOWED, DST_YDS_ALLOWED,
         DST_TACKLE_LOSS, DST_FORCED_FUM, DST_FOURTH_DOWN_STOP,
+        DST_ST_TD, DST_ST_FORCED_FUM, DST_ST_FUM_REC,
+        ST_PLAYER_TD, ST_PLAYER_FORCED_FUM, ST_PLAYER_FUM_REC,
         IDP_TACKLE_SOLO, IDP_TACKLE_AST, IDP_TACKLE_TOTAL, IDP_TACKLE_LOSS,
         IDP_SACK, IDP_INT, IDP_PASS_DEFENDED, IDP_FORCED_FUM, IDP_FUM_REC,
         IDP_TD, IDP_SAFETY,
@@ -209,6 +225,12 @@ STAT_LABELS: Final[Mapping[str, str]] = {
     DST_BLK: "DST blocked kicks",
     DST_PTS_ALLOWED: "Points allowed",
     DST_YDS_ALLOWED: "Yards allowed",
+    DST_ST_TD: "Special teams TD (team)",
+    DST_ST_FORCED_FUM: "Special teams forced fumbles (team)",
+    DST_ST_FUM_REC: "Special teams fumble recoveries (team)",
+    ST_PLAYER_TD: "Special teams player TD",
+    ST_PLAYER_FORCED_FUM: "Special teams player forced fumbles",
+    ST_PLAYER_FUM_REC: "Special teams player fumble recoveries",
     DST_TACKLE_LOSS: "DST tackles for loss",
     DST_FORCED_FUM: "DST forced fumbles",
     DST_FOURTH_DOWN_STOP: "DST fourth-down stops",

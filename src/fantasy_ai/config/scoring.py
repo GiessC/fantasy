@@ -251,6 +251,11 @@ class DefenseScoring(_Section):
     tackle_for_loss: float = 0.0
     forced_fumble: float = 0.0
     fourth_down_stop: float = 0.0
+    #: Special-teams plays credited to the team unit. A league that also scores
+    #: the player-credited versions configures those under ``special_teams_player``.
+    special_teams_touchdown: float = 0.0
+    special_teams_forced_fumble: float = 0.0
+    special_teams_fumble_recovery: float = 0.0
     points_allowed: dict[str, float] | None = None
     yards_allowed: dict[str, float] | None = None
     points_allowed_per_game_cv: float = Field(default=0.45, gt=0.0, le=2.0)
@@ -267,6 +272,28 @@ class DefenseScoring(_Section):
             S.DST_TACKLE_LOSS: self.tackle_for_loss,
             S.DST_FORCED_FUM: self.forced_fumble,
             S.DST_FOURTH_DOWN_STOP: self.fourth_down_stop,
+            S.DST_ST_TD: self.special_teams_touchdown,
+            S.DST_ST_FORCED_FUM: self.special_teams_forced_fumble,
+            S.DST_ST_FUM_REC: self.special_teams_fumble_recovery,
+        }
+
+
+class SpecialTeamsPlayerScoring(_Section):
+    """Special-teams plays credited to a named player rather than the team unit.
+
+    Kept separate from ``defense`` because leagues that score both list them as
+    two distinct lines, and collapsing them would pay twice for one play.
+    """
+
+    touchdown: float = 0.0
+    forced_fumble: float = 0.0
+    fumble_recovery: float = 0.0
+
+    def rates(self) -> dict[str, float]:
+        return {
+            S.ST_PLAYER_TD: self.touchdown,
+            S.ST_PLAYER_FORCED_FUM: self.forced_fumble,
+            S.ST_PLAYER_FUM_REC: self.fumble_recovery,
         }
 
 
@@ -382,6 +409,9 @@ class ScoringConfig(_Section):
     misc: MiscScoring = Field(default_factory=MiscScoring)
     kicking: KickingScoring = Field(default_factory=KickingScoring)
     defense: DefenseScoring = Field(default_factory=DefenseScoring)
+    special_teams_player: SpecialTeamsPlayerScoring = Field(
+        default_factory=SpecialTeamsPlayerScoring
+    )
     idp: IDPScoring = Field(default_factory=IDPScoring)
 
     #: Extra flat rates keyed directly by canonical stat key, for anything the
@@ -432,6 +462,7 @@ class ScoringConfig(_Section):
             self.misc,
             self.kicking,
             self.defense,
+            self.special_teams_player,
             self.idp,
         ):
             rates.update(section.rates())
