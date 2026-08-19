@@ -42,6 +42,18 @@ live draft, a stale pick list is worse than no pick list.
 Team defenses arrive as position `DEF` keyed by team code; they are normalised
 to `DST` with a readable name so they draft like anyone else.
 
+**Team-level defensive plays.** `dst_tackle_loss`, `dst_forced_fum` and
+`dst_fourth_down_stop` are scoreable, but no wired source publishes them today:
+FantasyPros' DST projections carry sacks, interceptions, fumble recoveries,
+touchdowns, safeties and points allowed, and nothing else. Configure them if
+your league scores them, then import a CSV that has the columns — the reader
+recognises `4th down stops`, `fourth down stops`, `TFL` and `FF` among others.
+Without such a column the stat is simply absent and contributes nothing, rather
+than being estimated.
+
+`FF` and `TFL` are resolved by position: on a DST sheet they are the team stat,
+anywhere else the individual one.
+
 ---
 
 ## FantasyPros

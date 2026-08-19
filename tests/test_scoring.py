@@ -229,3 +229,51 @@ class TestExplainability:
         top = result.top_contributors(3)
         magnitudes = [abs(line.points) for line in top]
         assert magnitudes == sorted(magnitudes, reverse=True)
+
+
+class TestTeamDefensivePlays:
+    """Team-level TFL, forced fumbles, and fourth-down stops.
+
+    These default to 0 because most leagues do not score them, so the test
+    that matters is that they contribute exactly what the league configures
+    and nothing at all when it does not.
+    """
+
+    @staticmethod
+    def _scorer(**defense: object) -> Scorer:
+        return Scorer(ScoringConfig.model_validate({"defense": defense}).compile())
+
+    def test_each_play_contributes_its_configured_points(self):
+        scorer = self._scorer(fourth_down_stop=2, tackle_for_loss=0.5, forced_fumble=1)
+        result = scorer.score(
+            StatLine(
+                {
+                    "dst_fourth_down_stop": 6,
+                    "dst_tackle_loss": 10,
+                    "dst_forced_fum": 4,
+                }
+            ),
+            "DST",
+        )
+        assert result.points == pytest.approx(6 * 2 + 10 * 0.5 + 4 * 1)
+
+    def test_absent_from_scoring_means_absent_from_the_total(self):
+        scorer = self._scorer(sack=1)
+        result = scorer.score(
+            StatLine({"dst_sack": 3, "dst_fourth_down_stop": 9, "dst_tackle_loss": 20}), "DST"
+        )
+        assert result.points == pytest.approx(3.0)
+
+    def test_every_line_is_explainable(self):
+        # The project's standing rule: components must sum to the total.
+        scorer = self._scorer(fourth_down_stop=2, tackle_for_loss=0.5, forced_fumble=1)
+        result = scorer.score(
+            StatLine({"dst_fourth_down_stop": 3, "dst_tackle_loss": 8, "dst_forced_fum": 2}),
+            "DST",
+        )
+        assert sum(line.points for line in result.lines) == pytest.approx(result.points)
+        assert {line.label for line in result.lines} == {
+            "DST fourth-down stops",
+            "DST tackles for loss",
+            "DST forced fumbles",
+        }

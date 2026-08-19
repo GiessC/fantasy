@@ -178,6 +178,21 @@ class TestStatMapping:
 
     def test_position_disambiguates_shared_names(self):
         assert resolve_field("sacks", position="DST") == "dst_sack"
+
+    def test_team_and_individual_defensive_columns_are_told_apart(self):
+        # "FF"/"TFL" mean the team stat on a DST sheet and the player stat
+        # anywhere else. Before these were position-sensitive both spellings
+        # resolved to the IDP key, so a DST export silently scored as IDP.
+        for name in ("ff", "forced fumbles"):
+            assert resolve_field(name, position="DST") == "dst_forced_fum"
+            assert resolve_field(name, position="LB") == "idp_forced_fum"
+        for name in ("tfl", "tackles for loss"):
+            assert resolve_field(name, position="DST") == "dst_tackle_loss"
+            assert resolve_field(name, position="LB") == "idp_tackle_loss"
+
+    def test_fourth_down_stops_are_recognised(self):
+        for name in ("4th down stops", "fourth down stops", "dst_fourth_down_stop"):
+            assert resolve_field(name, position="DST") == "dst_fourth_down_stop"
         assert resolve_field("sacks", position="QB") == "pass_sacked"
         assert resolve_field("int", position="QB") == "pass_int"
         assert resolve_field("int", position="DST") == "dst_int"

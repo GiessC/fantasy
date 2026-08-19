@@ -110,6 +110,11 @@ DST_SAFETY: Final = "dst_safety"
 DST_BLK: Final = "dst_blk"
 DST_PTS_ALLOWED: Final = "dst_pts_allowed"
 DST_YDS_ALLOWED: Final = "dst_yds_allowed"
+DST_TACKLE_LOSS: Final = "dst_tackle_loss"
+DST_FORCED_FUM: Final = "dst_forced_fum"
+#: A defensive stop on fourth down. Team-level equivalent of a "get off the
+#: field" play; scored by some leagues, published by very few sources.
+DST_FOURTH_DOWN_STOP: Final = "dst_fourth_down_stop"
 
 # --------------------------------------------------------------------------
 # IDP
@@ -147,6 +152,7 @@ SCORING_KEYS: Final[frozenset[str]] = frozenset(
         KICK_FGM_50_PLUS,
         DST_SACK, DST_INT, DST_FUM_REC, DST_TD, DST_SAFETY, DST_BLK,
         DST_PTS_ALLOWED, DST_YDS_ALLOWED,
+        DST_TACKLE_LOSS, DST_FORCED_FUM, DST_FOURTH_DOWN_STOP,
         IDP_TACKLE_SOLO, IDP_TACKLE_AST, IDP_TACKLE_TOTAL, IDP_TACKLE_LOSS,
         IDP_SACK, IDP_INT, IDP_PASS_DEFENDED, IDP_FORCED_FUM, IDP_FUM_REC,
         IDP_TD, IDP_SAFETY,
@@ -203,6 +209,9 @@ STAT_LABELS: Final[Mapping[str, str]] = {
     DST_BLK: "DST blocked kicks",
     DST_PTS_ALLOWED: "Points allowed",
     DST_YDS_ALLOWED: "Yards allowed",
+    DST_TACKLE_LOSS: "DST tackles for loss",
+    DST_FORCED_FUM: "DST forced fumbles",
+    DST_FOURTH_DOWN_STOP: "DST fourth-down stops",
     IDP_TACKLE_SOLO: "Solo tackles",
     IDP_TACKLE_AST: "Assisted tackles",
     IDP_TACKLE_TOTAL: "Total tackles",

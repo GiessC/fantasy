@@ -57,6 +57,12 @@ league:
       touchdown: 6
       safety: 2
       blocked_kick: 2
+      # Team-level defensive plays. Default 0 -- most leagues do not score
+      # them, and most sources do not publish them, so check 'data status'
+      # after a sync to confirm the numbers are actually arriving.
+      # fourth_down_stop: 2
+      # tackle_for_loss: 0.5
+      # forced_fumble: 1
       points_allowed:
         "0": 10
         "1-6": 7

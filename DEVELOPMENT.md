@@ -12,7 +12,7 @@
 | 6. LLM | **Done** | LM Studio via OpenAI-compatible API, structured output, validation |
 | 7. Web UI | **Done** | FastAPI + React live-draft board, verified in a real browser |
 
-418 tests, clean under `ruff`, `mypy`, and strict TypeScript.
+423 tests, clean under `ruff`, `mypy`, and strict TypeScript.
 
 ### What could not be verified here
 
@@ -58,7 +58,7 @@ Everything that does not touch a network is tested for real.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                          # 418 tests, no network, no model server
+pytest                          # 423 tests, no network, no model server
 pytest --cov=fantasy_ai         # with coverage
 ruff check src tests
 mypy src/fantasy_ai

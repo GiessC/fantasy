@@ -246,6 +246,11 @@ class DefenseScoring(_Section):
     touchdown: float = 6.0
     safety: float = 2.0
     blocked_kick: float = 2.0
+    #: Team-level defensive plays. Default 0 because most leagues do not score
+    #: them, and because few sources publish them -- see DATA_SOURCES.md.
+    tackle_for_loss: float = 0.0
+    forced_fumble: float = 0.0
+    fourth_down_stop: float = 0.0
     points_allowed: dict[str, float] | None = None
     yards_allowed: dict[str, float] | None = None
     points_allowed_per_game_cv: float = Field(default=0.45, gt=0.0, le=2.0)
@@ -259,6 +264,9 @@ class DefenseScoring(_Section):
             S.DST_TD: self.touchdown,
             S.DST_SAFETY: self.safety,
             S.DST_BLK: self.blocked_kick,
+            S.DST_TACKLE_LOSS: self.tackle_for_loss,
+            S.DST_FORCED_FUM: self.forced_fumble,
+            S.DST_FOURTH_DOWN_STOP: self.fourth_down_stop,
         }
 
 

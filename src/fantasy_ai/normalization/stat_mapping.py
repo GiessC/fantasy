@@ -82,14 +82,22 @@ for _canonical, _names in {
     S.DST_BLK: ("dst_blk", "blocked kicks", "blk", "blocks"),
     S.DST_PTS_ALLOWED: ("dst_pts_allowed", "points allowed", "pa", "pts allowed", "ptsallow"),
     S.DST_YDS_ALLOWED: ("dst_yds_allowed", "yards allowed", "yds allowed", "ydsagn", "ya"),
+    S.DST_TACKLE_LOSS: ("dst_tackle_loss", "dst tackles for loss", "team tackles for loss"),
+    S.DST_FORCED_FUM: ("dst_forced_fum", "dst forced fumbles", "team forced fumbles"),
+    S.DST_FOURTH_DOWN_STOP: (
+        "dst_fourth_down_stop", "fourth down stops", "4th down stops", "fourth down stop",
+        "4th down stop", "4thdownstops", "fourthdownstops", "4d stops",
+    ),
     S.IDP_TACKLE_SOLO: ("idp_tkl_solo", "solo tackles", "tackles solo", "tkl_solo", "solo"),
     S.IDP_TACKLE_AST: ("idp_tkl_ast", "assisted tackles", "tackles assist", "tkl_ast", "ast"),
     S.IDP_TACKLE_TOTAL: ("idp_tkl", "total tackles", "tackles", "tkl"),
-    S.IDP_TACKLE_LOSS: ("idp_tkl_loss", "tackles for loss", "tfl"),
+    # "tackles for loss"/"tfl" are resolved by position instead: a DST sheet
+    # means the team stat, any other sheet the individual one.
+    S.IDP_TACKLE_LOSS: ("idp_tkl_loss",),
     S.IDP_SACK: ("idp_sack", "idp sacks"),
     S.IDP_INT: ("idp_int", "idp interceptions"),
     S.IDP_PASS_DEFENDED: ("idp_pass_def", "passes defended", "pd"),
-    S.IDP_FORCED_FUM: ("idp_ff", "forced fumbles", "ff"),
+    S.IDP_FORCED_FUM: ("idp_ff",),   # "forced fumbles"/"ff": position-sensitive
     S.IDP_FUM_REC: ("idp_fum_rec", "idp fumble recoveries"),
     S.IDP_TD: ("idp_td", "idp touchdowns"),
     S.IDP_SAFETY: ("idp_safety",),
@@ -150,8 +158,11 @@ _POSITION_SENSITIVE: dict[str, dict[str, str]] = {
     _key("yards"): _YARDS_BY_POSITION,
     _key("att"): _ATT_BY_POSITION,
     _key("atts"): _ATT_BY_POSITION,
-    _key("ff"): {"_default": S.IDP_FORCED_FUM},
+    _key("ff"): {"DST": S.DST_FORCED_FUM, "_default": S.IDP_FORCED_FUM},
     _key("fr"): {"DST": S.DST_FUM_REC, "_default": S.IDP_FUM_REC},
+    _key("tfl"): {"DST": S.DST_TACKLE_LOSS, "_default": S.IDP_TACKLE_LOSS},
+    _key("tackles for loss"): {"DST": S.DST_TACKLE_LOSS, "_default": S.IDP_TACKLE_LOSS},
+    _key("forced fumbles"): {"DST": S.DST_FORCED_FUM, "_default": S.IDP_FORCED_FUM},
 }
 
 
