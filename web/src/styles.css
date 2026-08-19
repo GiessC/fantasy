@@ -347,6 +347,20 @@ table.board th.sortable:hover {
 table.board th[aria-sort]:not([aria-sort="none"]) {
   color: var(--accent);
 }
+table.board th.sortable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Reserved whether or not the arrow is showing, so switching the sorted
+   column does not shift the header row sideways. */
+.sort-arrow {
+  display: inline-block;
+  width: 0.9em;
+  margin-left: 2px;
+  font-size: 0.75em;
+  vertical-align: baseline;
+}
 
 table.board td {
   padding: 6px 8px;

@@ -10,6 +10,20 @@ type SortKey =
   | "adp_value_picks"
   | "availability_next_pick";
 
+type SortDir = "asc" | "desc";
+
+// The direction a column takes on its *first* click, chosen so that one click
+// always puts the most interesting rows on top. ADP is the odd one out: a lower
+// number means drafted earlier, so ascending is the useful default there.
+const DEFAULT_DIR: Record<SortKey, SortDir> = {
+  draft_score: "desc",
+  vor: "desc",
+  projected_points: "desc",
+  adp: "asc",
+  adp_value_picks: "desc",
+  availability_next_pick: "desc",
+};
+
 const COLUMNS: { key: SortKey; label: string; title: string }[] = [
   { key: "projected_points", label: "Proj", title: "League-adjusted projected season points" },
   { key: "vor", label: "VOR", title: "Points above the replacement-level starter" },
@@ -37,21 +51,35 @@ export function BoardTable({
   onTake: (player: Player) => void;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("draft_score");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  // Click a new column to sort by it; click the current one to reverse.
+  function applySort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(DEFAULT_DIR[key]);
+    }
+  }
 
   const sorted = useMemo(() => {
     const copy = [...players];
+    const factor = sortDir === "asc" ? 1 : -1;
     copy.sort((a, b) => {
       const left = a[sortKey];
       const right = b[sortKey];
-      // Nulls always sort last, whichever direction the column runs.
+      // Nulls sort last in BOTH directions. A missing value is not a small
+      // one, and floating unprojected players to the top of an ascending sort
+      // would bury the rows actually being asked for.
       if (left === null && right === null) return 0;
       if (left === null) return 1;
       if (right === null) return -1;
-      // ADP is the one column where smaller is better.
-      return sortKey === "adp" ? left - right : right - left;
+      if (left === right) return 0;
+      return (left < right ? -1 : 1) * factor;
     });
     return copy;
-  }, [players, sortKey]);
+  }, [players, sortKey, sortDir]);
 
   if (players.length === 0) {
     return (
@@ -76,11 +104,28 @@ export function BoardTable({
               <th
                 key={column.key}
                 className="sortable"
-                title={`${column.title} — click to sort`}
-                aria-sort={sortKey === column.key ? "descending" : "none"}
-                onClick={() => setSortKey(column.key)}
+                title={`${column.title} — click to sort, click again to reverse`}
+                aria-sort={
+                  sortKey === column.key
+                    ? sortDir === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+                tabIndex={0}
+                role="columnheader"
+                onClick={() => applySort(column.key)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    applySort(column.key);
+                  }
+                }}
               >
                 {column.label}
+                <span className="sort-arrow" aria-hidden="true">
+                  {sortKey === column.key ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                </span>
               </th>
             ))}
             <th>Fit</th>
