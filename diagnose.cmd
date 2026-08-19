@@ -34,4 +34,16 @@ echo.
 echo ===== PATH =====
 echo %PATH%
 echo.
+echo ===== existing .venv =====
+if exist "%~dp0.venv\pyvenv.cfg" (
+  echo --- .venv\pyvenv.cfg ---
+  type "%~dp0.venv\pyvenv.cfg"
+  echo.
+  echo --- does .venv\Scripts\python.exe run? ---
+  "%~dp0.venv\Scripts\python.exe" -c pass 2>&1
+  echo exit code: %errorlevel%
+) else (
+  echo no .venv in this folder
+)
+echo.
 pause

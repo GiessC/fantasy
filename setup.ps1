@@ -6,6 +6,10 @@
 # refusing to run this file at all. Safe to re-run; it never overwrites an
 # existing config.
 
+# -Clean rebuilds the virtual environment from scratch. PowerShell requires
+# param() to be the first statement, so it leads.
+param([switch]$Clean)
+
 # Deliberately NOT 'Stop'. Windows PowerShell treats anything a native command
 # writes to stderr as an error, and pip writes ordinary progress and warnings
 # there -- so 'Stop' aborts the install over messages that are not failures.
@@ -178,19 +182,92 @@ Write-Ok "Using $python"
 
 # ------------------------------------------------------------------ the venv
 
-$venvPy  = Join-Path $root '.venv\Scripts\python.exe'
+$venvDir = Join-Path $root '.venv'
+$venvPy   = Join-Path $venvDir 'Scripts\python.exe'
 # The console script, rather than 'python -m fantasy_ai.cli.main': running the
 # package as a module emits a RuntimeWarning about import order on every call.
-$fantasy = Join-Path $root '.venv\Scripts\fantasy-ai.exe'
+$fantasy = Join-Path $venvDir 'Scripts\fantasy-ai.exe'
 
-if (Test-Path $venvPy) {
-    Write-Step "Virtual environment already exists"
-    Write-Ok ".venv"
-} else {
+# The interpreter directory a venv was built against, from its pyvenv.cfg.
+# Named $venvHome and never $home, which is a PowerShell automatic variable.
+function Get-VenvHome($dir) {
+    $cfg = Join-Path $dir 'pyvenv.cfg'
+    if (-not (Test-Path $cfg)) { return $null }
+    try {
+        foreach ($line in (Get-Content $cfg -ErrorAction Stop)) {
+            if ($line -match '^\s*home\s*=\s*(.+?)\s*$') { return $matches[1] }
+        }
+    } catch { }
+    return $null
+}
+
+# A virtual environment is a set of pointers to the interpreter that built it.
+# Move it, delete that interpreter, or copy the folder from another machine and
+# every command inside it fails on a path that does not exist here -- e.g.
+# "did not find executable at '/usr/bin\python.exe'" from a venv built on Linux.
+# The folder existing proves nothing.
+#
+# Two independent checks, because neither alone is sufficient: on Windows the
+# venv's python.exe is a redirector that reads pyvenv.cfg to find the real
+# interpreter, so a 'home' that does not exist here is fatal and worth testing
+# directly rather than inferring from an exit code; but a venv can also be
+# broken in ways pyvenv.cfg looks fine for, which running it catches.
+function Test-VenvUsable($dir, $exe) {
+    if (-not (Test-Path $exe)) { return $false }
+    $venvHome = Get-VenvHome $dir
+    if ($venvHome -and -not (Test-Path $venvHome)) { return $false }
+    try {
+        & $exe -c pass 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
+$needsVenv = $true
+
+if (Test-Path $venvDir) {
+    if ((-not $Clean) -and (Test-VenvUsable $venvDir $venvPy)) {
+        Write-Step "Virtual environment already exists and works"
+        Write-Ok ".venv"
+        $needsVenv = $false
+    } else {
+        if ($Clean) {
+            Write-Step "Rebuilding the virtual environment (-Clean)"
+        } else {
+            $stale = Get-VenvHome $venvDir
+            Write-Step "The existing .venv is broken -- rebuilding it"
+            if ($stale) {
+                Write-Host "    It points at an interpreter that is not on this machine:" -ForegroundColor Yellow
+                Write-Host "        $stale" -ForegroundColor Yellow
+                Write-Host "    (a venv built on another machine, or by a Python since removed)" -ForegroundColor Yellow
+            }
+        }
+        try {
+            Remove-Item -Recurse -Force $venvDir -ErrorAction Stop
+        } catch {
+            Fail @"
+Could not delete the broken virtual environment at:
+    $venvDir
+
+$_
+
+Close any editor, terminal, or program using that folder, then run setup.cmd
+again. If it still will not go, delete the .venv folder in File Explorer.
+"@
+        }
+        Write-Ok "Removed"
+    }
+}
+
+if ($needsVenv) {
     Write-Step "Creating the virtual environment (.venv)"
-    & $python -m venv .venv
+    & $python -m venv $venvDir
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $venvPy)) {
-        Fail "Could not create the virtual environment. If this Python came from the Microsoft Store, install it from python.org instead."
+        Fail "Could not create the virtual environment with $python"
+    }
+    if (-not (Test-VenvUsable $venvDir $venvPy)) {
+        Fail "Created .venv but it does not run. The interpreter used was $python"
     }
     Write-Ok "Created"
 }
