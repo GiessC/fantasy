@@ -18,6 +18,7 @@ from ..render import (
     title,
     warn,
 )
+from .config_db import demo_contamination_warnings
 
 analyze_app = typer.Typer(help="Deterministic board and player analysis.", no_args_is_help=True)
 
@@ -74,6 +75,10 @@ def analyze_board(
         warn(warning)
     if board.excluded:
         note(f"{len(board.excluded)} player(s) excluded (no projection, inactive, or zero points).")
+    # Surfaced here as well as in 'data status', because the board is where an
+    # invented name is actually noticed -- at the top of it.
+    for message in demo_contamination_warnings(cli.repos):
+        warn(message)
 
     if detail:
         title("Replacement levels")

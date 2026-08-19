@@ -328,5 +328,10 @@ Write-Host "  1. Edit config\league.yaml -- teams, scoring, roster, your draft s
 Write-Host "  2. Put your FantasyPros key in config\sources.yaml, under"
 Write-Host "     sources.fantasypros.api_key"
 Write-Host "  3. .\fantasy-ai validate-config      (confirms it read the key)"
-Write-Host "  4. .\fantasy-ai sync all --verbose   (replaces demo data with real data)"
+Write-Host "  4. .\fantasy-ai sync all --verbose   (fetch real data)"
+Write-Host "  5. .\fantasy-ai data clear --source demo" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Step 5 matters: the demo players above are INVENTED. They do not" -ForegroundColor Yellow
+Write-Host "disappear when real data arrives -- they sit on the board next to" -ForegroundColor Yellow
+Write-Host "real players until you clear them." -ForegroundColor Yellow
 Write-Host ""

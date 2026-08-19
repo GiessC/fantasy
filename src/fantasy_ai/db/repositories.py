@@ -388,6 +388,14 @@ class _SnapshotRepository:
         )
         return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
 
+    def delete_source(self, source: str) -> int:
+        """Delete every snapshot contributed by ``source``. Returns rows deleted."""
+        cursor = self.db.execute(
+            f"DELETE FROM {self.table} WHERE source = ?",  # noqa: S608
+            (source,),
+        )
+        return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
     def count(self) -> int:
         return int(self.db.scalar(f"SELECT COUNT(*) FROM {self.table}") or 0)  # noqa: S608
 
@@ -922,3 +930,51 @@ class Repositories:
         self.injuries = InjuryRepository(db)
         self.sync_runs = SyncRunRepository(db)
         self.drafts = DraftRepository(db)
+
+    def sources_present(self) -> dict[str, int]:
+        """Every source with stored facts, and how many rows each contributed."""
+        counts: dict[str, int] = {}
+        for table in ("projections", "rankings", "adp", "injuries"):
+            rows = self.db.query(
+                f"SELECT source, COUNT(*) AS n FROM {table} GROUP BY source"  # noqa: S608
+            )
+            for row in rows:
+                counts[str(row["source"])] = counts.get(str(row["source"]), 0) + int(row["n"])
+        return counts
+
+    def delete_source(self, source: str) -> dict[str, int]:
+        """Remove everything a source contributed, including players only it knew.
+
+        Demo data is the motivating case: it mints its own players, so deleting
+        its projections alone would leave invented names sitting on the board
+        with no numbers behind them. A player is removed only when no source id
+        and no fact row remains, so a real player who happened to be described
+        by this source as well survives.
+        """
+        removed: dict[str, int] = {}
+        for name in ("projections", "rankings", "adp", "injuries"):
+            count = getattr(self, name).delete_source(source)
+            if count:
+                removed[name] = count
+
+        cursor = self.db.execute("DELETE FROM player_source_ids WHERE source = ?", (source,))
+        if cursor.rowcount and cursor.rowcount > 0:
+            removed["player_source_ids"] = cursor.rowcount
+
+        cursor = self.db.execute(
+            """
+            DELETE FROM players
+            WHERE player_id NOT IN (SELECT player_id FROM player_source_ids)
+              AND player_id NOT IN (SELECT player_id FROM projections)
+              AND player_id NOT IN (SELECT player_id FROM rankings)
+              AND player_id NOT IN (SELECT player_id FROM adp)
+              AND player_id NOT IN (SELECT player_id FROM injuries)
+            """
+        )
+        if cursor.rowcount and cursor.rowcount > 0:
+            removed["players"] = cursor.rowcount
+
+        cursor = self.db.execute("DELETE FROM sync_runs WHERE source = ?", (source,))
+        if cursor.rowcount and cursor.rowcount > 0:
+            removed["sync_runs"] = cursor.rowcount
+        return removed

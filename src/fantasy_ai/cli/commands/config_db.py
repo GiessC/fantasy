@@ -8,6 +8,8 @@ import typer
 
 from ...config import FantasyProsConfig, load_settings, validate_settings
 from ...db import LATEST_VERSION
+from ...db.repositories import Repositories
+from ...errors import FantasyAIError
 from ...services import freshness
 from ..context import CLIContext
 from ..render import key_values, note, print_json, success, title, warn
@@ -218,6 +220,64 @@ def data_status(
         )
     if not stale and not missing:
         success("All datasets are present and fresh.")
+
+    for line in demo_contamination_warnings(cli.repos):
+        warn(line)
+
+
+#: Sources whose data is invented. Real and synthetic players coexisting on one
+#: board is always a mistake, but a silent one -- the names look plausible.
+SYNTHETIC_SOURCES = ("demo",)
+
+
+def demo_contamination_warnings(repos: Repositories) -> list[str]:
+    """Warn when invented players share the board with real ones."""
+    counts = repos.sources_present()
+    synthetic = {name: n for name, n in counts.items() if name in SYNTHETIC_SOURCES}
+    real = {name: n for name, n in counts.items() if name not in SYNTHETIC_SOURCES}
+    if not synthetic or not real:
+        return []
+    return [
+        "Synthetic demo data is mixed in with real data: "
+        + ", ".join(f"{name} ({n} rows)" for name, n in sorted(synthetic.items()))
+        + ". Demo players are invented and will compete on the board with real "
+        "ones. Remove them with 'fantasy-ai data clear --source demo'."
+    ]
+
+
+@data_app.command("clear")
+def data_clear(
+    ctx: typer.Context,
+    source: str = typer.Option(..., "--source", help="Source name to remove, e.g. 'demo'."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+) -> None:
+    """Delete everything a source contributed.
+
+    Players known only to that source go too, so clearing 'demo' leaves no
+    invented names behind. Drafts and their picks are never touched.
+    """
+    cli: CLIContext = ctx.obj
+    counts = cli.repos.sources_present()
+    if source not in counts:
+        known = ", ".join(sorted(counts)) or "none"
+        raise FantasyAIError(
+            f"No stored data from source {source!r}. Sources present: {known}."
+        )
+
+    if not yes:
+        typer.confirm(
+            f"Delete all {counts[source]} stored record(s) from {source!r}, "
+            f"including any players only it knows?",
+            abort=True,
+        )
+
+    removed = cli.repos.delete_source(source)
+    if not removed:
+        note(f"Nothing to remove for {source!r}.")
+        return
+    success(f"Removed {source!r} data.")
+    key_values(sorted(removed.items()), heading="Rows deleted")
+    note("Run 'fantasy-ai analyze board' to see the board without it.")
 
 
 @data_app.command("sync-log")

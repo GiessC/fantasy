@@ -74,6 +74,16 @@ tool before wiring up real data. Everything it produces is labelled
 `source: demo` and the names are invented — it is for exercising the pipeline,
 never for real draft decisions.
 
+**Clear it before you trust the board.** Demo players are real rows with their
+own ids, so they do not vanish when real data arrives — they compete with it:
+
+```bash
+fantasy-ai data clear --source demo
+```
+
+`analyze board` and `data status` warn when synthetic and real data are stored
+together, so this is hard to miss, but easy to forget.
+
 ### Real data
 
 Put your key in `config/sources.yaml` (that file is git-ignored, which is why it
@@ -240,7 +250,7 @@ web/                 React + TypeScript + Vite frontend
 ## Development
 
 ```bash
-pytest                 # 432 tests, no network, no model server
+pytest                 # 436 tests, no network, no model server
 ruff check src tests
 mypy src/fantasy_ai
 

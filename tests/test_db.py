@@ -275,3 +275,62 @@ class TestFreshness:
         row = repos.sync_runs.recent(1)[0]
         assert row["status"] == "success"
         assert row["record_count"] == 10
+
+
+class TestClearingASource:
+    """Removing everything one source contributed.
+
+    Demo data is the motivating case: it mints its own players, so a naive
+    delete of its projections would leave invented names on the board with no
+    numbers behind them -- which reads as a bug in the analytics rather than
+    leftover synthetic data.
+    """
+
+    @staticmethod
+    def _seed(repos: Repositories) -> None:
+        # Built with their real source ids rather than via make_player, whose
+        # blanket "test" source id would keep every player anchored and hide
+        # exactly the orphan cleanup under test.
+        demo = make_player("demo:1", "Invented Person", "RB")
+        demo.source_ids = {"demo": "1"}
+        real = make_player("fp:1", "Real Person", "RB")
+        real.source_ids = {"fantasypros": "1"}
+        repos.players.upsert([demo, real])
+        repos.projections.add_many(
+            ProjectionRecord(
+                player_id=player_id,
+                season=2026,
+                source=source,
+                stats=StatLine({"rush_yd": 1000.0, "rush_td": 8.0}),
+            )
+            for player_id, source in (("demo:1", "demo"), ("fp:1", "fantasypros"))
+        )
+
+    def test_sources_present_counts_every_fact_table(self, repos: Repositories):
+        self._seed(repos)
+        counts = repos.sources_present()
+        assert counts["demo"] == 1
+        assert counts["fantasypros"] == 1
+
+    def test_clearing_removes_the_source_and_its_players_only(self, repos: Repositories):
+        self._seed(repos)
+        removed = repos.delete_source("demo")
+
+        assert removed["projections"] == 1
+        assert removed["players"] == 1
+        remaining = {player.player_id for player in repos.players.all()}
+        assert remaining == {"fp:1"}
+        assert "demo" not in repos.sources_present()
+
+    def test_a_player_another_source_also_knows_survives(self, repos: Repositories):
+        # The guard that makes this safe: a player is deleted only when no
+        # source id and no fact row is left pointing at them.
+        self._seed(repos)
+        repos.players.link_source_id("fantasypros", "shared", "demo:1")
+        repos.delete_source("demo")
+        assert {player.player_id for player in repos.players.all()} == {"demo:1", "fp:1"}
+
+    def test_clearing_an_absent_source_changes_nothing(self, repos: Repositories):
+        self._seed(repos)
+        assert repos.delete_source("nobody") == {}
+        assert len(repos.players.all()) == 2
