@@ -17,6 +17,37 @@ CSV export ───┘                                          └─ LLM cont
 
 ## Quick start
 
+### Windows
+
+```
+setup.cmd
+```
+
+That is the whole thing. It finds Python, builds the virtual environment,
+installs everything, creates your config files, loads demo data, and prints a
+board to prove the pipeline works. Re-running it is safe and never overwrites a
+config you have edited.
+
+Then use the wrapper in this folder, which runs out of the virtual environment
+so you never have to activate anything:
+
+```
+.\fantasy-ai analyze board        (PowerShell)
+fantasy-ai analyze board          (cmd.exe)
+```
+
+Two Windows-specific things worth knowing, because both look like the tool is
+broken when they are not:
+
+- **Install Python from [python.org](https://www.python.org/downloads/), not the
+  Microsoft Store.** The Store's `python.exe` is a stub that cannot create a
+  working virtual environment. `setup.cmd` detects it and says so.
+- **`setup.cmd`, not `setup.ps1`.** A default Windows install refuses to run
+  `.ps1` files at all; `setup.cmd` passes the flag that gets around it, without
+  changing any system-wide setting.
+
+### macOS and Linux
+
 ```bash
 git clone <this repo> && cd fantasy
 python3 -m venv .venv && source .venv/bin/activate
