@@ -23,6 +23,12 @@ data/imports/*
 config/league.yaml
 config/sources.yaml
 
+# API key files. Any *.key under config/, plus the conventional names, so a
+# secret cannot be committed by forgetting to ignore the file you chose.
+config/*.key
+config/secrets.yaml
+config/*.secret
+
 # Web UI build artifacts
 web/node_modules/
 web/dist/

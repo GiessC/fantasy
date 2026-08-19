@@ -47,8 +47,11 @@ to `DST` with a readable name so they draft like anyone else.
 ## FantasyPros
 
 `https://api.fantasypros.com/public/v2/json/nfl` with an `x-api-key` header.
-Set `FANTASYPROS_API_KEY` (the variable *name* is configurable; the key never
-appears in YAML).
+
+The key comes from the first of `sources.fantasypros.api_key` (inline in the
+git-ignored `config/sources.yaml`), `api_key_file` (a file holding only the
+key), or the environment variable named by `api_key_env`. See
+[CONFIGURATION.md](CONFIGURATION.md#api-keys).
 
 Provides the expert dispersion — best / worst / average / standard deviation
 across the expert panel — that consensus disagreement and the risk model depend

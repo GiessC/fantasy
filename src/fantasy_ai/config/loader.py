@@ -7,7 +7,8 @@ Two files, discovered relative to the project root:
     blocks, which sit here because they are tuned alongside league rules.
 
 ``config/sources.yaml``
-    ``sources:``, ``llm:``, ``paths:``, ``log_level:`` -- tool settings.
+    ``sources:``, ``llm:``, ``paths:``, ``log_level:`` -- tool settings, and the
+    place API keys live.  It is git-ignored precisely so it can hold them.
 
 Either file may be absent, in which case the matching ``*.example.yaml`` is used
 so a fresh checkout runs without setup.  Blocks may also appear in either file;
@@ -17,6 +18,7 @@ the loader merges them and reports conflicts.
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -273,6 +275,26 @@ def _deep_update(target: dict[str, Any], updates: dict[str, Any]) -> None:
             target[key] = value
 
 
+def _key_file_warnings(key_file: Path | None) -> list[str]:
+    """Flag a key file that other users on this machine can read.
+
+    Only meaningful on POSIX -- Windows permissions do not map onto the mode
+    bits, so there is nothing honest to say there.
+    """
+    if key_file is None or os.name != "posix":
+        return []
+    try:
+        mode = key_file.stat().st_mode
+    except OSError:
+        return []  # missing/unreadable is reported at load time, not here
+    if mode & (stat.S_IRGRP | stat.S_IROTH):
+        return [
+            f"{key_file} is readable by other users on this machine "
+            f"(mode {stat.filemode(mode)}). Consider: chmod 600 {key_file}"
+        ]
+    return []
+
+
 def validate_settings(settings: Settings) -> list[str]:
     """Non-fatal consistency checks, returned as human-readable warnings."""
     warnings: list[str] = []
@@ -303,11 +325,24 @@ def validate_settings(settings: Settings) -> list[str]:
             "Superflex detected: QB replacement level is computed from the full "
             "QB starter demand, which is much deeper than a 1-QB league."
         )
-    if app.sources.fantasypros.enabled and app.sources.fantasypros.api_key() is None:
-        warnings.append(
-            f"FantasyPros is enabled but ${app.sources.fantasypros.api_key_env} is not set. "
-            f"Set it, or use 'fantasy-ai sync projections --from-csv' / 'sync demo'."
-        )
+    fantasypros = app.sources.fantasypros
+    if fantasypros.enabled:
+        try:
+            has_key = fantasypros.resolved_api_key() is not None
+        except ConfigError as exc:
+            # An unreadable key file is a real error, but this function promises
+            # warnings rather than exceptions; 'sync' still fails hard on it.
+            has_key = True
+            warnings.append(str(exc))
+        if not has_key:
+            warnings.append(
+                "FantasyPros is enabled but no API key was found. Set 'api_key' under "
+                "sources.fantasypros in your sources file, point 'api_key_file' at a "
+                f"file holding the key, or export ${fantasypros.api_key_env}. Without "
+                "a key, use 'fantasy-ai sync projections --from-csv' or 'sync demo'."
+            )
+    warnings.extend(_key_file_warnings(fantasypros.api_key_file))
+    warnings.extend(_key_file_warnings(app.llm.api_key_file))
     if league.scoring.compile().rates.get("rec", 0.0) == 0 and league.roster.get("TE", 0) > 0:
         warnings.append(
             "Scoring is non-PPR; TE and pass-catching RB values shift substantially "

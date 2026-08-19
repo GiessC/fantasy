@@ -570,8 +570,10 @@ class SyncService:
         elif sources.fantasypros.enabled:
             report = SyncReport(dataset="fantasypros", source="fantasypros")
             report.warnings.append(
-                f"Skipped: ${sources.fantasypros.api_key_env} is not set. "
-                f"Use 'sync csv' with a FantasyPros CSV export, or 'sync demo'."
+                f"Skipped: no FantasyPros API key. Set 'api_key' under "
+                f"sources.fantasypros in config/sources.yaml, or 'api_key_file', or "
+                f"export ${sources.fantasypros.api_key_env}. Otherwise use 'sync csv' "
+                f"with a FantasyPros CSV export, or 'sync demo'."
             )
             reports.append(report)
 

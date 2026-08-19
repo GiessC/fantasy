@@ -257,8 +257,10 @@ class HTTPSource:
                 if response.status_code in {401, 403}:
                     raise SourceAuthError(
                         f"{self.source_name} rejected the request "
-                        f"({response.status_code}). Check the API key environment "
-                        f"variable named in config/sources.yaml.",
+                        f"({response.status_code}). Check the API key configured for "
+                        f"this source in config/sources.yaml; 'fantasy-ai validate-config' "
+                        f"reports which of api_key / api_key_file / the environment it "
+                        f"is reading.",
                         source=self.source_name,
                     )
                 if response.status_code == 404:

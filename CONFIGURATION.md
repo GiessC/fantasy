@@ -321,7 +321,10 @@ sources:
   fantasypros:
     enabled: true
     base_url: https://api.fantasypros.com/public/v2/json/nfl
-    api_key_env: FANTASYPROS_API_KEY     # name only, never the key
+    # The key, from the first of these that is set:
+    api_key: "your-key"                  # inline (sources.yaml is git-ignored)
+    api_key_file: config/fantasypros.key # or a file containing only the key
+    api_key_env: FANTASYPROS_API_KEY     # or the name of an env var
     scoring: auto                        # auto | STD | HALF | PPR
     positions: [QB, RB, WR, TE, K, DST]
     projection_week: 0                   # 0 = full season
@@ -386,6 +389,27 @@ log_level: info
 | `FANTASYPROS_API_KEY` | The key itself (name configurable) |
 
 CLI flags win over environment variables, which win over YAML.
+
+### API keys
+
+Keys are the one exception to "environment wins over YAML", because for a
+single-user local tool the environment is the more awkward place to put them.
+Each key resolves from the **first** of these that is set:
+
+| # | Setting | Notes |
+| --- | --- | --- |
+| 1 | `api_key` | The key inline. `config/sources.yaml` is git-ignored, so it is not committed. |
+| 2 | `api_key_file` | Path to a file whose entire contents are the key. Relative to the project root. `config/*.key` is git-ignored. |
+| 3 | `api_key_env` | Name of an environment variable holding the key. |
+
+A key file is stripped of surrounding whitespace (every editor adds a trailing
+newline, and a key with one welded on fails authentication in a way that looks
+exactly like a wrong key). A file that is missing, empty, or has more than one
+line is rejected with a message saying which.
+
+`fantasy-ai validate-config` reports **which** of the three supplied the key and
+flags a key file that other users on the machine can read. It never prints the
+key itself.
 
 ---
 

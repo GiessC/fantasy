@@ -142,7 +142,7 @@ class FantasyProsClient(HTTPSource):
         api_key: str | None = None,
     ) -> None:
         self.settings = config or FantasyProsConfig()
-        self._api_key = api_key if api_key is not None else self.settings.api_key()
+        self._api_key = api_key if api_key is not None else self.settings.resolved_api_key()
         super().__init__(
             base_url=self.settings.base_url,
             config=http,
@@ -155,8 +155,11 @@ class FantasyProsClient(HTTPSource):
     def _auth_headers(self) -> dict[str, str]:
         if not self._api_key:
             raise SourceAuthError(
-                f"No FantasyPros API key. Set ${self.settings.api_key_env}, disable the "
-                f"source in config/sources.yaml, or ingest a CSV export with "
+                f"No FantasyPros API key. In config/sources.yaml, set either\n"
+                f"    sources.fantasypros.api_key:      <the key>\n"
+                f"    sources.fantasypros.api_key_file: path/to/keyfile\n"
+                f"or export ${self.settings.api_key_env}. You can also disable the "
+                f"source and ingest a CSV export with "
                 f"'fantasy-ai sync projections --from-csv <file>'.",
                 source=SOURCE,
             )

@@ -116,7 +116,7 @@ league:
   draft:
     type: snake            # snake | linear | third_round_reversal | auction
     position: 7            # your 1-indexed draft slot
-    rounds: 16
+    rounds: 15           # 9 starters + 6 bench; more rounds than roster spots warns
     # seconds_per_pick: 90
     # budget: 200          # required for auction
 

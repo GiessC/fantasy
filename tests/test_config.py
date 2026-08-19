@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from fantasy_ai.config import LeagueConfig, load_settings, validate_settings
+from fantasy_ai.config import (
+    FantasyProsConfig,
+    LeagueConfig,
+    LLMConfig,
+    load_settings,
+    validate_settings,
+)
 from fantasy_ai.config.ranges import Range, lookup, parse_range, parse_range_table
 from fantasy_ai.config.scoring import ScoringConfig
 from fantasy_ai.errors import ConfigError
@@ -299,3 +305,130 @@ class TestLoader:
         settings = load_settings(root=root, env={})
         assert settings.league.teams > 0
         assert settings.league.scoring.compile().rates
+
+
+class TestAPIKeyResolution:
+    """A key may come from config, a file, or the environment -- in that order.
+
+    The environment variable was the only option originally; config and file
+    were added because exporting a variable for a single-user local tool is
+    friction with nothing to show for it.
+    """
+
+    def _write(self, root: Path, sources_yaml: str) -> None:
+        (root / "config").mkdir(parents=True, exist_ok=True)
+        (root / "config" / "league.yaml").write_text("league:\n  season: 2026\n  teams: 12\n")
+        (root / "config" / "sources.yaml").write_text(textwrap.dedent(sources_yaml))
+
+    def test_inline_key_from_yaml(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("FANTASYPROS_API_KEY", raising=False)
+        self._write(tmp_path, """
+            sources:
+              fantasypros:
+                api_key: yaml-key
+        """)
+        settings = load_settings(root=tmp_path)
+        assert settings.app.sources.fantasypros.resolved_api_key() == "yaml-key"
+
+    def test_key_file_relative_to_project_root(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("FANTASYPROS_API_KEY", raising=False)
+        (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "config" / "fantasypros.key").write_text("file-key\n")
+        self._write(tmp_path, """
+            sources:
+              fantasypros:
+                api_key_file: config/fantasypros.key
+        """)
+        settings = load_settings(root=tmp_path)
+        assert settings.app.sources.fantasypros.api_key_file.is_absolute()
+        assert settings.app.sources.fantasypros.resolved_api_key() == "file-key"
+
+    def test_trailing_newline_is_stripped(self, tmp_path: Path, monkeypatch):
+        # Every editor adds one, and a key with a newline welded on fails auth
+        # in a way that looks exactly like a wrong key.
+        monkeypatch.delenv("FANTASYPROS_API_KEY", raising=False)
+        key_file = tmp_path / "k.key"
+        key_file.write_text("  spaced-key  \n")
+        config = FantasyProsConfig(api_key_file=key_file)
+        assert config.resolved_api_key() == "spaced-key"
+
+    def test_precedence_is_inline_then_file_then_env(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setenv("FANTASYPROS_API_KEY", "env-key")
+        key_file = tmp_path / "k.key"
+        key_file.write_text("file-key\n")
+
+        assert FantasyProsConfig(
+            api_key="inline-key", api_key_file=key_file
+        ).resolved_api_key() == "inline-key"
+        assert FantasyProsConfig(api_key_file=key_file).resolved_api_key() == "file-key"
+        assert FantasyProsConfig().resolved_api_key() == "env-key"
+
+    def test_blank_inline_key_falls_through(self, monkeypatch):
+        monkeypatch.setenv("FANTASYPROS_API_KEY", "env-key")
+        assert FantasyProsConfig(api_key="   ").resolved_api_key() == "env-key"
+
+    def test_missing_key_file_names_the_path(self, tmp_path: Path):
+        config = FantasyProsConfig(api_key_file=tmp_path / "absent.key")
+        with pytest.raises(ConfigError, match="does not exist"):
+            config.resolved_api_key()
+
+    def test_empty_key_file_is_rejected(self, tmp_path: Path):
+        key_file = tmp_path / "empty.key"
+        key_file.write_text("\n")
+        with pytest.raises(ConfigError, match="is empty"):
+            FantasyProsConfig(api_key_file=key_file).resolved_api_key()
+
+    def test_multiline_key_file_is_rejected(self, tmp_path: Path):
+        # Catches someone writing 'FANTASYPROS_API_KEY=abc' into the file.
+        key_file = tmp_path / "multi.key"
+        key_file.write_text("FANTASYPROS_API_KEY=abc\n# a comment\n")
+        with pytest.raises(ConfigError, match="more than one line"):
+            FantasyProsConfig(api_key_file=key_file).resolved_api_key()
+
+    def test_key_source_never_reveals_the_key(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("FANTASYPROS_API_KEY", raising=False)
+        assert "secret" not in FantasyProsConfig(api_key="secret").key_source()
+        assert FantasyProsConfig().key_source() is None
+        monkeypatch.setenv("FANTASYPROS_API_KEY", "secret")
+        assert FantasyProsConfig().key_source() == "$FANTASYPROS_API_KEY"
+
+    def test_missing_key_warns_about_all_three_options(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("FANTASYPROS_API_KEY", raising=False)
+        self._write(tmp_path, "sources:\n  fantasypros:\n    enabled: true\n")
+        warnings = validate_settings(load_settings(root=tmp_path))
+        text = " ".join(warnings)
+        assert "api_key" in text and "api_key_file" in text and "FANTASYPROS_API_KEY" in text
+
+    def test_unreadable_key_file_warns_rather_than_raising(self, tmp_path: Path):
+        # validate_settings documents itself as non-fatal; 'sync' still hard-fails.
+        self._write(tmp_path, """
+            sources:
+              fantasypros:
+                api_key_file: config/absent.key
+        """)
+        warnings = validate_settings(load_settings(root=tmp_path))
+        assert any("does not exist" in w for w in warnings)
+
+    def test_world_readable_key_file_is_flagged(self, tmp_path: Path):
+        key_file = tmp_path / "k.key"
+        key_file.write_text("file-key\n")
+        key_file.chmod(0o644)
+        self._write(tmp_path, f"""
+            sources:
+              fantasypros:
+                api_key_file: {key_file}
+        """)
+        warnings = validate_settings(load_settings(root=tmp_path))
+        assert any("readable by other users" in w for w in warnings)
+
+        key_file.chmod(0o600)
+        warnings = validate_settings(load_settings(root=tmp_path))
+        assert not any("readable by other users" in w for w in warnings)
+
+    def test_llm_key_resolves_the_same_way(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("LM_STUDIO_API_KEY", raising=False)
+        assert LLMConfig().resolved_api_key() == "lm-studio"       # harmless default
+        assert LLMConfig(api_key="proxy-key").resolved_api_key() == "proxy-key"
+        key_file = tmp_path / "llm.key"
+        key_file.write_text("from-file\n")
+        assert LLMConfig(api_key_file=key_file).resolved_api_key() == "from-file"

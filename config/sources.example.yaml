@@ -2,8 +2,14 @@
 #
 #   cp config/sources.example.yaml config/sources.yaml
 #
-# No secrets belong in this file. API keys are referenced by environment
-# variable name and read at request time.
+# Your copy (config/sources.yaml) is git-ignored, so it is a safe place to keep
+# an API key. This file -- the .example one -- IS tracked by git, so never put a
+# real key here.
+#
+# Every API key resolves from the first of these that is set:
+#   1. api_key       -- the key, inline
+#   2. api_key_file  -- a path to a file containing only the key
+#   3. api_key_env   -- the name of an environment variable holding the key
 
 paths:
   data_dir: data
@@ -14,7 +20,14 @@ sources:
   fantasypros:
     enabled: true
     base_url: https://api.fantasypros.com/public/v2/json/nfl
-    api_key_env: FANTASYPROS_API_KEY   # export FANTASYPROS_API_KEY=...
+    # Paste your key here -- this file's real counterpart is git-ignored.
+    # api_key: "your-fantasypros-key"
+    #
+    # Or keep it out of config entirely, in a file containing only the key:
+    # api_key_file: config/fantasypros.key    # then: chmod 600 config/fantasypros.key
+    #
+    # Or leave both unset and export this environment variable instead:
+    api_key_env: FANTASYPROS_API_KEY
     scoring: auto                      # auto | STD | HALF | PPR
     positions: [QB, RB, WR, TE, K, DST]
     ranking_types: [ADP, ROS, DRAFT]

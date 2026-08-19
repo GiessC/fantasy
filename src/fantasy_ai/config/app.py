@@ -1,8 +1,13 @@
 """Runtime configuration: data sources, the local LLM, analytics tuning, paths.
 
 Kept separate from :mod:`fantasy_ai.config.league` because these are *tool*
-settings, not league rules.  Secrets never live here -- API keys are named by
-environment variable and resolved at request time.
+settings, not league rules.
+
+API keys resolve from three places, in order: the ``api_key`` field, a file
+named by ``api_key_file``, then the environment variable named by
+``api_key_env``.  Inline keys are supported because this is a single-user local
+tool and ``config/sources.yaml`` is git-ignored; ``api_key_file`` exists for
+anyone who would rather keep the secret out of a config file entirely.
 """
 
 from __future__ import annotations
@@ -19,6 +24,44 @@ from .positions import normalize_position
 
 class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+def _read_key_file(path: Path) -> str:
+    """Read a secret from a file, or explain precisely why it could not be read.
+
+    The whole file is the key, so surrounding whitespace and a trailing newline
+    are stripped -- every editor adds one, and a key with a newline welded to
+    the end fails authentication in a way that looks like a wrong key.
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ConfigError(
+            f"api_key_file points at {path}, which does not exist. Create it with "
+            f"the key as its only contents, or set the key inline with 'api_key:'."
+        ) from None
+    except OSError as exc:
+        raise ConfigError(f"Could not read api_key_file {path}: {exc}") from exc
+    key = content.strip()
+    if not key:
+        raise ConfigError(
+            f"api_key_file {path} is empty; it should contain the key and nothing else."
+        )
+    if "\n" in key:
+        raise ConfigError(
+            f"api_key_file {path} has more than one line. It should contain only the "
+            f"key -- no 'KEY=' prefix, no comments."
+        )
+    return key
+
+
+def _resolve_secret(inline: str | None, key_file: Path | None, env_var: str) -> str | None:
+    """First of: an inline value, a key file, the named environment variable."""
+    if inline and inline.strip():
+        return inline.strip()
+    if key_file is not None:
+        return _read_key_file(key_file)
+    return os.environ.get(env_var) or None
 
 
 class PathsConfig(_Model):
@@ -61,6 +104,13 @@ class FantasyProsConfig(_Model):
 
     enabled: bool = True
     base_url: str = "https://api.fantasypros.com/public/v2/json/nfl"
+    #: The key itself. ``config/sources.yaml`` is git-ignored, so a key here is
+    #: not committed -- but see ``api_key_file`` to keep it out of config too.
+    api_key: str | None = None
+    #: Path to a file whose entire contents are the key. Relative paths resolve
+    #: against the project root.
+    api_key_file: Path | None = None
+    #: Environment variable consulted when neither of the above is set.
     api_key_env: str = "FANTASYPROS_API_KEY"
     #: Scoring bucket to request. ``auto`` derives it from league scoring.
     scoring: Literal["auto", "STD", "HALF", "PPR"] = "auto"
@@ -79,8 +129,26 @@ class FantasyProsConfig(_Model):
         }
     )
 
-    def api_key(self) -> str | None:
-        return os.environ.get(self.api_key_env) or None
+    def resolved_api_key(self) -> str | None:
+        """The key, from config, key file, or environment -- in that order."""
+        return _resolve_secret(self.api_key, self.api_key_file, self.api_key_env)
+
+    def key_source(self) -> str | None:
+        """Where the key came from, for diagnostics. Never returns the key itself."""
+        if self.api_key and self.api_key.strip():
+            return "sources.fantasypros.api_key"
+        if self.api_key_file is not None:
+            return f"{self.api_key_file}"
+        if os.environ.get(self.api_key_env):
+            return f"${self.api_key_env}"
+        return None
+
+    def resolve(self, root: Path) -> FantasyProsConfig:
+        if self.api_key_file is None or self.api_key_file.is_absolute():
+            return self
+        clone = self.model_copy(deep=True)
+        clone.api_key_file = root / self.api_key_file
+        return clone
 
 
 class SleeperConfig(_Model):
@@ -131,8 +199,12 @@ class LLMConfig(_Model):
     enabled: bool = True
     base_url: str = "http://localhost:1234/v1"
     model: str = "muse-glimmer"
+    #: LM Studio ignores the key, but an OpenAI-compatible server behind a proxy
+    #: may not. Set it here, in a file, or in the environment.
+    api_key: str | None = None
+    api_key_file: Path | None = None
     api_key_env: str = "LM_STUDIO_API_KEY"
-    #: LM Studio ignores the key but the OpenAI client shape requires one.
+    #: Used when none of the three above supply a key; the client shape requires one.
     api_key_default: str = "lm-studio"
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     max_tokens: int = Field(default=1200, gt=0)
@@ -149,8 +221,18 @@ class LLMConfig(_Model):
     extra_body: dict[str, object] = Field(default_factory=dict)
     system_prompt_override: str | None = None
 
-    def api_key(self) -> str:
-        return os.environ.get(self.api_key_env) or self.api_key_default
+    def resolved_api_key(self) -> str:
+        return (
+            _resolve_secret(self.api_key, self.api_key_file, self.api_key_env)
+            or self.api_key_default
+        )
+
+    def resolve(self, root: Path) -> LLMConfig:
+        if self.api_key_file is None or self.api_key_file.is_absolute():
+            return self
+        clone = self.model_copy(deep=True)
+        clone.api_key_file = root / self.api_key_file
+        return clone
 
 
 class ReplacementConfig(_Model):
@@ -295,4 +377,6 @@ class AppConfig(_Model):
         clone = self.model_copy(deep=True)
         clone.paths = self.paths.resolve(root)
         clone.sources.csv_import = self.sources.csv_import.resolve(root)
+        clone.sources.fantasypros = self.sources.fantasypros.resolve(root)
+        clone.llm = self.llm.resolve(root)
         return clone

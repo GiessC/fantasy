@@ -6,7 +6,7 @@ from typing import Any
 
 import typer
 
-from ...config import load_settings, validate_settings
+from ...config import FantasyProsConfig, load_settings, validate_settings
 from ...db import LATEST_VERSION
 from ...services import freshness
 from ..context import CLIContext
@@ -79,7 +79,7 @@ def validate_config(
         [
             ("Database", settings.app.paths.database),
             ("HTTP cache", settings.app.paths.http_cache),
-            ("FantasyPros", "enabled" if settings.app.sources.fantasypros.enabled else "disabled"),
+            ("FantasyPros", _fantasypros_status(settings.app.sources.fantasypros)),
             ("Sleeper", "enabled" if settings.app.sources.sleeper.enabled else "disabled"),
             ("Local model", f"{settings.app.llm.model} at {settings.app.llm.base_url}"),
         ],
@@ -92,6 +92,14 @@ def validate_config(
             warn(message)
     else:
         note("No warnings.")
+
+
+def _fantasypros_status(config: FantasyProsConfig) -> str:
+    """Enabled/disabled plus where the key comes from -- never the key itself."""
+    if not config.enabled:
+        return "disabled"
+    source = config.key_source()
+    return f"enabled, key from {source}" if source else "enabled, no key found"
 
 
 @db_app.command("init")

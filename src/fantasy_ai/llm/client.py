@@ -78,7 +78,7 @@ class LLMClient:
             self._client = httpx.Client(
                 timeout=self.config.timeout_seconds,
                 headers={
-                    "Authorization": f"Bearer {self.config.api_key()}",
+                    "Authorization": f"Bearer {self.config.resolved_api_key()}",
                     "Content-Type": "application/json",
                 },
             )

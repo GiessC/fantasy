@@ -39,8 +39,25 @@ never for real draft decisions.
 
 ### Real data
 
+Put your key in `config/sources.yaml` (that file is git-ignored, which is why it
+is the right place for it):
+
+```yaml
+sources:
+  fantasypros:
+    api_key: "your-key"               # https://www.fantasypros.com/api/
+```
+
+Prefer to keep the key out of config? Point at a file holding only the key, or
+fall back to the environment — the first one set wins:
+
+```yaml
+    api_key_file: config/fantasypros.key    # chmod 600 it
+    api_key_env: FANTASYPROS_API_KEY        # used if neither of the above is set
+```
+
 ```bash
-export FANTASYPROS_API_KEY=...        # https://www.fantasypros.com/api/
+fantasy-ai validate-config            # confirms which one it read, never prints the key
 fantasy-ai sync all
 ```
 
@@ -186,7 +203,7 @@ web/                 React + TypeScript + Vite frontend
 ## Development
 
 ```bash
-pytest                 # 405 tests, no network, no model server
+pytest                 # 418 tests, no network, no model server
 ruff check src tests
 mypy src/fantasy_ai
 
