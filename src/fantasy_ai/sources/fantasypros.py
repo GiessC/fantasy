@@ -148,6 +148,7 @@ class FantasyProsClient(HTTPSource):
             config=http,
             cache_dir=cache_dir,
             client=client,
+            rate_limit_interval=self.settings.rate_limit_interval,
         )
 
     # -- auth --------------------------------------------------------------

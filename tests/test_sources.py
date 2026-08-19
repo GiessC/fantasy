@@ -251,6 +251,61 @@ class TestHTTPSource:
         with pytest.raises(SourceUnavailableError, match="did not respond"):
             source.get_json("thing")
 
+    def test_rate_limiting_tightens_the_interval_for_later_requests(self):
+        # The regression: one 429 during a ~24-request sync used to be followed
+        # by a dozen more, because only that request backed off while the pace
+        # of everything after it was unchanged.
+        source = HTTPSource(
+            "http://test",
+            HTTPConfig(max_retries=0, backoff_seconds=0.0, max_backoff_seconds=8.0),
+            client=transport(lambda request: httpx.Response(429)),
+            rate_limit_interval=0.0,
+        )
+        with pytest.raises(SourceUnavailableError):
+            source.get_json("thing")
+        assert source._rate_limit_interval >= 2.0
+
+    def test_rate_limit_interval_never_exceeds_max_backoff(self):
+        source = HTTPSource(
+            "http://test",
+            HTTPConfig(max_retries=3, backoff_seconds=0.0, max_backoff_seconds=3.0),
+            client=transport(lambda request: httpx.Response(429)),
+            rate_limit_interval=0.0,
+        )
+        with pytest.raises(SourceUnavailableError):
+            source.get_json("thing", use_cache=False)
+        assert source._rate_limit_interval == 3.0
+
+    def test_rate_limit_error_names_the_setting_to_change(self):
+        source = HTTPSource(
+            "http://test",
+            HTTPConfig(max_retries=0, backoff_seconds=0.0),
+            client=transport(lambda request: httpx.Response(429)),
+            rate_limit_interval=0.0,
+        )
+        with pytest.raises(SourceUnavailableError, match="rate_limit_interval"):
+            source.get_json("thing")
+
+    def test_a_plain_outage_does_not_mention_rate_limiting(self):
+        source = HTTPSource(
+            "http://test",
+            HTTPConfig(max_retries=0, backoff_seconds=0.0),
+            client=transport(lambda request: httpx.Response(503)),
+            rate_limit_interval=0.0,
+        )
+        with pytest.raises(SourceUnavailableError, match="did not respond") as excinfo:
+            source.get_json("thing")
+        assert "rate limiting" not in str(excinfo.value)
+
+    def test_per_source_interval_overrides_the_shared_http_config(self):
+        source = HTTPSource(
+            "http://test",
+            HTTPConfig(rate_limit_interval=0.0),
+            client=transport(lambda request: httpx.Response(200, json={})),
+            rate_limit_interval=1.5,
+        )
+        assert source._rate_limit_interval == 1.5
+
     def test_auth_failure_is_not_retried(self):
         calls = {"n": 0}
 

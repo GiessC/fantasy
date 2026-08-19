@@ -120,6 +120,11 @@ class FantasyProsConfig(_Model):
     ranking_types: list[str] = Field(default_factory=lambda: ["ADP", "ROS", "DRAFT"])
     #: Week ``0`` means full-season projections.
     projection_week: int = Field(default=0, ge=0, le=18)
+    #: Minimum seconds between FantasyPros requests. A full sync makes roughly
+    #: two dozen calls, and firing them back to back gets a key rate limited
+    #: almost immediately, so this defaults to a real pause rather than 0.
+    #: Raise it if you still see HTTP 429.
+    rate_limit_interval: float = Field(default=1.0, ge=0)
     #: Optional override for a self-hosted proxy or a recorded fixture server.
     endpoints: dict[str, str] = Field(
         default_factory=lambda: {
@@ -162,6 +167,9 @@ class SleeperConfig(_Model):
     username: str | None = None
     #: Player metadata is ~5 MB; refresh at most this often.
     player_cache_ttl_seconds: int = Field(default=24 * 3600, ge=0)
+    #: Sleeper is unauthenticated and asks only that you stay reasonable; a
+    #: sync makes a handful of calls, so no spacing is needed by default.
+    rate_limit_interval: float = Field(default=0.0, ge=0)
     #: Keep only players at a position some league could start. Sleeper's payload
     #: carries every offensive lineman, punter, and long snapper -- roughly half
     #: the ~11k records -- none of which can be drafted in any fantasy format.

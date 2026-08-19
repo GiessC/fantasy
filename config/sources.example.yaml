@@ -32,6 +32,11 @@ sources:
     positions: [QB, RB, WR, TE, K, DST]
     ranking_types: [ADP, ROS, DRAFT]
     projection_week: 0                 # 0 = full season
+    # Seconds between requests. A full sync is roughly two dozen calls, and
+    # firing them back to back gets a key rate limited almost at once.
+    # Raise this if you see HTTP 429; a 429 also raises it automatically for
+    # the remainder of the run.
+    rate_limit_interval: 1.0
 
   sleeper:
     enabled: true

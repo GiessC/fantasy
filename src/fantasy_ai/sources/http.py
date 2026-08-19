@@ -34,6 +34,11 @@ log = get_logger(__name__)
 #: Status codes worth retrying: transient server problems and rate limits.
 RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
+#: Minimum pause after a 429 that carries no Retry-After header. A rate limit
+#: is a statement about requests per unit time, so the generic sub-second
+#: backoff used for a flaky connection is the wrong shape of remedy.
+_RATE_LIMIT_FLOOR_SECONDS = 2.0
+
 
 @dataclass(slots=True)
 class Response:
@@ -135,9 +140,18 @@ class HTTPSource:
         client: httpx.Client | None = None,
         cache_ttl_seconds: int | None = None,
         default_headers: dict[str, str] | None = None,
+        rate_limit_interval: float | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.config = config or HTTPConfig()
+        # Per-source override of the shared HTTP setting: one API's limit says
+        # nothing about another's. Mutable, because a 429 tightens it for the
+        # rest of the run -- see _throttle_harder.
+        self._rate_limit_interval = (
+            rate_limit_interval
+            if rate_limit_interval is not None
+            else self.config.rate_limit_interval
+        )
         self.cache = (
             HTTPCache(
                 directory=cache_dir,
@@ -180,8 +194,27 @@ class HTTPSource:
 
     # -- requests ----------------------------------------------------------
 
+    def _throttle_harder(self) -> None:
+        """Slow down for the rest of this run after being rate limited.
+
+        Without this, one 429 during a multi-request sync is followed by a
+        dozen more: the retry backs off for that single request, then the next
+        request goes out at the original pace into the same closed window.
+        """
+        previous = self._rate_limit_interval
+        self._rate_limit_interval = min(
+            max(previous * 2.0, _RATE_LIMIT_FLOOR_SECONDS),
+            self.config.max_backoff_seconds,
+        )
+        if self._rate_limit_interval > previous:
+            log.warning(
+                "%s rate limited; spacing later requests %.1fs apart "
+                "(sources.%s.rate_limit_interval sets the starting value)",
+                self.source_name, self._rate_limit_interval, self.source_name,
+            )
+
     def _respect_rate_limit(self) -> None:
-        interval = self.config.rate_limit_interval
+        interval = self._rate_limit_interval
         if interval <= 0:
             return
         elapsed = time.monotonic() - self._last_request_at
@@ -243,6 +276,7 @@ class HTTPSource:
     ) -> Any:
         delay = self.config.backoff_seconds
         last_error: str = "unknown error"
+        rate_limited = False
 
         for attempt in range(self.config.max_retries + 1):
             self._respect_rate_limit()
@@ -273,6 +307,12 @@ class HTTPSource:
                 if response.status_code in RETRYABLE_STATUS:
                     retry_after = _retry_after_seconds(response)
                     last_error = f"HTTP {response.status_code}"
+                    if response.status_code == 429:
+                        rate_limited = True
+                        self._throttle_harder()
+                        # A server that says "slow down" and offers no number
+                        # still deserves more than the generic one-second wait.
+                        delay = max(delay, _RATE_LIMIT_FLOOR_SECONDS)
                     if retry_after is not None:
                         delay = max(delay, retry_after)
                 elif response.status_code >= 400:
@@ -301,6 +341,18 @@ class HTTPSource:
                     delay * self.config.backoff_multiplier, self.config.max_backoff_seconds
                 )
 
+        if rate_limited:
+            raise SourceUnavailableError(
+                f"{self.source_name} is rate limiting this key (HTTP 429) and did not "
+                f"recover after {self.config.max_retries + 1} attempt(s).\n"
+                f"Space requests further apart in config/sources.yaml:\n"
+                f"    sources.{self.source_name}.rate_limit_interval: "
+                f"{max(self._rate_limit_interval * 2, 2.0):.0f}   # seconds between requests\n"
+                f"Raising sources.http.max_retries also helps. Cached responses are "
+                f"reused, so re-running picks up where this left off rather than "
+                f"starting over.",
+                source=self.source_name,
+            )
         raise SourceUnavailableError(
             f"{self.source_name} did not respond successfully after "
             f"{self.config.max_retries + 1} attempt(s): {last_error}",

@@ -71,6 +71,22 @@ Provides the expert dispersion — best / worst / average / standard deviation
 across the expert panel — that consensus disagreement and the risk model depend
 on. No other free source publishes it.
 
+### Rate limiting
+
+A full `sync all` makes roughly two dozen FantasyPros calls (positions ×
+ranking types, plus projections). Fired back to back those earn an HTTP 429
+almost immediately, so requests are spaced by
+`sources.fantasypros.rate_limit_interval` (default 1s).
+
+A 429 is retried, honours `Retry-After`, and **tightens the interval for the
+rest of the run** — otherwise the single retry backs off and then the next
+request sails into the same closed window. If it still cannot recover, the
+error names the setting to raise. Cached responses are reused, so re-running
+resumes rather than starting over.
+
+Sleeper defaults to no spacing: it is unauthenticated and a sync is only a
+handful of calls.
+
 ### Robustness
 
 This adapter is written defensively on purpose. FantasyPros has changed response

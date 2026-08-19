@@ -240,7 +240,7 @@ web/                 React + TypeScript + Vite frontend
 ## Development
 
 ```bash
-pytest                 # 427 tests, no network, no model server
+pytest                 # 432 tests, no network, no model server
 ruff check src tests
 mypy src/fantasy_ai
 
