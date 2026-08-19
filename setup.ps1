@@ -40,58 +40,138 @@ function Invoke-Checked($exe, $arguments, $whatFailed) {
 
 # ---------------------------------------------------------------- find python
 
-# Path to a real python.exe of at least 3.11, or $null.
-function Resolve-Python($exe, $versionFlag) {
+# Every candidate tried, with the reason it was rejected. Printed on failure,
+# because "Python not found" on a machine that has Python is useless on its own.
+$script:Attempts = @()
+
+# Probe one interpreter. Returns its real path if it is 3.11+, else $null.
+function Test-PythonExe($exe, $versionFlag, $label) {
+    # This payload deliberately contains NO quote characters. Windows PowerShell
+    # mangles embedded double quotes when building the command line for a native
+    # executable, which turns the probe into a syntax error and makes a perfectly
+    # good interpreter look broken.
+    $code = 'import sys; print(sys.executable); print(sys.version_info[0]); print(sys.version_info[1])'
+
+    $probe = @()
+    if ($versionFlag) { $probe += $versionFlag }
+    $probe += @('-c', $code)
+
+    $output = $null
     try {
-        $probe = @()
-        if ($versionFlag) { $probe += $versionFlag }
-        $probe += @('-c', 'import sys; print(sys.executable); print("%d.%d" % sys.version_info[:2])')
-
         $output = & $exe @probe 2>$null
-        if ($LASTEXITCODE -ne 0) { return $null }
-
-        $lines = @($output)
-        if ($lines.Count -lt 2) { return $null }
-
-        $exePath = "$($lines[0])".Trim()
-        $version = "$($lines[1])".Trim().Split('.')
-        if ($version.Count -lt 2) { return $null }
-        if ([int]$version[0] -lt 3) { return $null }
-        if ([int]$version[0] -eq 3 -and [int]$version[1] -lt 11) { return $null }
-
-        # The Microsoft Store ships a stub python.exe that only opens the Store
-        # page. It can report a version yet cannot produce a working venv.
-        if ($exePath -like '*WindowsApps*') { return $null }
-        if (-not (Test-Path $exePath)) { return $null }
-
-        return $exePath
     } catch {
+        $script:Attempts += "  $label -- not installed / not on PATH"
         return $null
     }
+    if ($LASTEXITCODE -ne 0) {
+        $script:Attempts += "  $label -- exited with code $LASTEXITCODE"
+        return $null
+    }
+
+    $lines = @($output | Where-Object { "$_".Trim() -ne '' })
+    if ($lines.Count -lt 3) {
+        $script:Attempts += "  $label -- gave no version (likely the Microsoft Store stub)"
+        return $null
+    }
+
+    $exePath = "$($lines[0])".Trim()
+    $major = 0
+    $minor = 0
+    [void][int]::TryParse("$($lines[1])".Trim(), [ref]$major)
+    [void][int]::TryParse("$($lines[2])".Trim(), [ref]$minor)
+
+    if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 11)) {
+        $script:Attempts += "  $label -- Python $major.$minor, too old (need 3.11+)"
+        return $null
+    }
+    # The Microsoft Store ships a stub python.exe that cannot build a real venv.
+    if ($exePath -like '*WindowsApps*') {
+        $script:Attempts += "  $label -- Microsoft Store version, cannot create a virtual environment"
+        return $null
+    }
+    if (-not (Test-Path $exePath)) {
+        $script:Attempts += "  $label -- reported $exePath, which does not exist"
+        return $null
+    }
+
+    $script:Attempts += "  $label -- OK, Python $major.$minor at $exePath"
+    return $exePath
+}
+
+# Python installed but never added to PATH is the single most common Windows
+# case, so look where the installer actually puts it before giving up.
+function Find-PythonOnDisk {
+    $found = @()
+    $roots = @()
+    if ($env:LOCALAPPDATA) { $roots += (Join-Path $env:LOCALAPPDATA 'Programs\Python') }
+    if ($env:ProgramFiles)  { $roots += $env:ProgramFiles }
+    $x86 = (Get-Item 'Env:ProgramFiles(x86)' -ErrorAction SilentlyContinue).Value
+    if ($x86) { $roots += $x86 }
+    $roots += 'C:\'
+
+    foreach ($root in $roots) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+        try {
+            $dirs = Get-ChildItem -Path $root -Filter 'Python3*' -Directory -ErrorAction SilentlyContinue
+            foreach ($dir in $dirs) {
+                $candidate = Join-Path $dir.FullName 'python.exe'
+                if (Test-Path $candidate) { $found += $candidate }
+            }
+        } catch { }
+    }
+    # Newest first: Python313 sorts above Python311.
+    return @($found | Sort-Object -Descending -Unique)
 }
 
 Write-Step "Looking for Python 3.11 or newer"
 
 $python = $null
-# 'py' is the Windows Python launcher: the most reliable way to reach a real
-# interpreter rather than whatever 'python' happens to resolve to.
+
+# 1. The Windows Python launcher, newest first. Most reliable when present.
 foreach ($flag in @('-3.13', '-3.12', '-3.11', '-3')) {
-    $python = Resolve-Python 'py' $flag
+    $python = Test-PythonExe 'py' $flag "py $flag"
     if ($python) { break }
 }
-if (-not $python) { $python = Resolve-Python 'python' $null }
-if (-not $python) { $python = Resolve-Python 'python3' $null }
+
+# 2. Whatever 'python' / 'python3' resolve to on PATH.
+if (-not $python) { $python = Test-PythonExe 'python'  $null 'python (from PATH)' }
+if (-not $python) { $python = Test-PythonExe 'python3' $null 'python3 (from PATH)' }
+
+# 3. Standard install locations, for an install that never made it onto PATH.
+if (-not $python) {
+    Write-Host "    Not on PATH -- checking the usual install folders..." -ForegroundColor Yellow
+    foreach ($candidate in (Find-PythonOnDisk)) {
+        $python = Test-PythonExe $candidate $null $candidate
+        if ($python) { break }
+    }
+}
 
 if (-not $python) {
+    $detail = ($script:Attempts -join "`r`n")
+    if (-not $detail) { $detail = "  (nothing resembling Python was found at all)" }
     Fail @"
 No usable Python 3.11 or newer was found.
 
-Install it from https://www.python.org/downloads/
-Do NOT use the Microsoft Store version -- its python.exe is a stub that cannot
-create a working virtual environment.
+Here is every candidate that was tried, and why each was rejected:
 
-In the installer, tick "Add python.exe to PATH" on the first screen.
-Then close this window, open a new one, and run setup.cmd again.
+$detail
+
+Most likely fixes, in order:
+
+1. You installed Python but this window started BEFORE the install.
+   PATH is only read when a window opens. Close this window, open a new
+   one, and run setup.cmd again. This is the most common cause.
+
+2. You installed from the Microsoft Store. Its python.exe is a stub and
+   cannot create a virtual environment. Install from python.org instead:
+   https://www.python.org/downloads/
+
+3. You installed without ticking "Add python.exe to PATH". Re-run the
+   installer, choose Modify, and enable it -- or just tell me the output
+   of this command and I will point the script straight at it:
+
+       where python
+
 "@
 }
 Write-Ok "Using $python"

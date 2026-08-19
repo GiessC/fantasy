@@ -46,6 +46,12 @@ broken when they are not:
   `.ps1` files at all; `setup.cmd` passes the flag that gets around it, without
   changing any system-wide setting.
 
+If setup still cannot find Python, run `diagnose.cmd`. It prints where Windows
+thinks Python is, which interpreters the launcher knows about, and your PATH —
+enough to identify the problem from the output alone. Note that a terminal only
+reads PATH when it opens, so a window started **before** you installed Python
+will never see it; opening a new one fixes that case by itself.
+
 ### macOS and Linux
 
 ```bash
