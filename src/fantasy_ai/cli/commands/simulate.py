@@ -28,10 +28,17 @@ def simulate_availability(
         simulate=True, iterations=iterations, seed=seed, next_pick=at_pick
     )
     if context.simulation is None:
-        warn(
-            "No simulation ran -- there are no intervening picks, or no draft position "
-            "is configured. Set league.draft.position or pass --at-pick."
-        )
+        if at_pick is not None:
+            warn(
+                f"No simulation ran: pick {at_pick} leaves nothing to simulate. "
+                f"Pass a later --at-pick, or check 'fantasy-ai draft status' if a "
+                f"draft is under way."
+            )
+        else:
+            warn(
+                "No simulation ran -- there are no intervening picks, and no draft "
+                "position is configured. Set league.draft.position, or pass --at-pick."
+            )
         raise typer.Exit(code=1)
 
     players = context.board.top(limit)

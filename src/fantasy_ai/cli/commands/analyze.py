@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from ...analytics import compare_scores
+from ...errors import FantasyAIError
 from ..context import CLIContext
 from ..render import (
     note,
@@ -28,6 +29,12 @@ def analyze_board(
     ctx: typer.Context,
     limit: int = typer.Option(25, "--limit", "-n", min=1, max=500),
     position: str = typer.Option(None, "--position", "-p", help="Filter to one position."),
+    slot: int = typer.Option(
+        None, "--slot",
+        help="Assume this draft slot instead of league.draft.position, to see the "
+             "board from a position you have not been assigned yet. Ignored once a "
+             "draft is under way, which knows your real next pick.",
+    ),
     simulate: bool = typer.Option(
         True, "--simulate/--no-simulate",
         help="Use Monte Carlo availability instead of the closed-form estimate.",
@@ -39,7 +46,24 @@ def analyze_board(
     """The full draft board, ranked by composite draft score."""
     cli: CLIContext = ctx.obj
     service = cli.analysis()
-    context = service.board(simulate=simulate, iterations=iterations)
+
+    slot_ignored = False
+    next_pick: int | None = None
+    if slot is not None:
+        teams = cli.settings.league.teams
+        if not 1 <= slot <= teams:
+            raise FantasyAIError(
+                f"--slot must be between 1 and {teams} (league.teams); got {slot}."
+            )
+        if cli.repos.drafts.active() is not None:
+            # A draft in progress knows the real next pick, and a slot number
+            # stops meaning a pick number after the first round anyway.
+            slot_ignored = True
+        else:
+            # No picks made yet, so the first pick of slot N is pick N.
+            next_pick = slot
+
+    context = service.board(simulate=simulate, iterations=iterations, next_pick=next_pick)
     board = context.board
 
     players = board.top(limit, position=position.upper() if position else None)
@@ -64,10 +88,19 @@ def analyze_board(
     if context.status is not None:
         for line in context.status.describe():
             note(line)
+    if slot_ignored:
+        warn(
+            f"--slot {slot} ignored: a draft is under way, so availability follows "
+            f"its actual next pick. Use 'fantasy-ai draft status' to see where it is."
+        )
     if board.next_pick is not None:
+        source = "--slot" if next_pick is not None else "league.draft.position"
         note(
             f"Availability measured at pick {board.next_pick} "
-            f"({context.availability_method()})."
+            f"({context.availability_method()}, from {source})."
+            if context.status is None
+            else f"Availability measured at pick {board.next_pick} "
+                 f"({context.availability_method()})."
         )
     if context.simulation is not None:
         note(context.simulation.summary())

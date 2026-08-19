@@ -163,6 +163,7 @@ automatically.
 Every metric is decomposable, and the CLI will show you the decomposition:
 
 ```bash
+fantasy-ai analyze board --slot 3                     # board as if you drafted 3rd
 fantasy-ai analyze player "Player Name" --breakdown   # projection -> points, line by line
 fantasy-ai analyze compare "Player A" "Player B"      # why A outranks B, per component
 fantasy-ai analyze replacement                        # how replacement level was derived
@@ -250,7 +251,7 @@ web/                 React + TypeScript + Vite frontend
 ## Development
 
 ```bash
-pytest                 # 436 tests, no network, no model server
+pytest                 # 439 tests, no network, no model server
 ruff check src tests
 mypy src/fantasy_ai
 

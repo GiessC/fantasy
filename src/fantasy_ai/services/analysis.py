@@ -111,10 +111,16 @@ class AnalysisService:
                 target_pick = self.drafts.target_pick_for_availability(status)
             if status.is_complete:
                 warnings.append("This draft is complete; the board shows leftover players.")
-        elif target_pick is None and self.settings.league.draft.position is not None:
-            # No draft started: assume the user's first pick.
-            target_pick = self.settings.league.draft.position
-            current_pick = 1
+        else:
+            # No draft started, so the board is analysed from the top of it.
+            # current_pick must be set whether the target pick came from config
+            # or from a caller (--at-pick / --slot): the simulator needs both
+            # ends to know how many picks intervene, and leaving it None made an
+            # explicitly requested target silently produce no simulation at all.
+            if target_pick is None:
+                target_pick = self.settings.league.draft.position
+            if target_pick is not None:
+                current_pick = 1
 
         first_pass = self.engine.analyze(
             dataset,

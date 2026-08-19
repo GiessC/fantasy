@@ -315,7 +315,7 @@ class AnalyticsEngine:
         )
 
         availability = self._availability(
-            available, adp_records, next_pick, availability_override
+            available, adp_records, next_pick, availability_override, current_pick
         )
 
         roster_players = [by_id[pid] for pid in roster if pid in by_id]
@@ -461,9 +461,26 @@ class AnalyticsEngine:
         adp_records: dict,
         next_pick: int | None,
         override: dict[str, float] | None,
+        current_pick: int | None = None,
     ) -> dict[str, AvailabilityEstimate]:
         if next_pick is None:
             return {}
+        if current_pick is not None and next_pick <= current_pick:
+            # You are on the clock: every player still on the board is
+            # available to you right now, whatever their ADP says. The ADP
+            # model would otherwise report a player you can draft this second
+            # as only 65% likely to be there.
+            return {
+                player.player_id: AvailabilityEstimate(
+                    player_id=player.player_id,
+                    target_pick=next_pick,
+                    probability=1.0,
+                    adp=None,
+                    sigma=None,
+                    method="on-the-clock",
+                )
+                for player in available
+            }
         estimates = self.availability_model.estimate_many(
             [player.player_id for player in available], next_pick, adp_records
         )

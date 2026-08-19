@@ -91,6 +91,47 @@ class TestFullPipeline:
         assert without.availability_method() == "analytic"
         assert with_sim.board.top(1)[0].availability.method == "monte-carlo"
 
+    def test_an_explicit_target_pick_still_simulates(self, settings, repos):
+        # The regression: current_pick was only set on the branch that read
+        # league.draft.position, so supplying next_pick directly (--at-pick,
+        # --slot) left it None, the simulator's guard never opened, and the CLI
+        # told you to pass the flag you had just passed.
+        SyncService(settings, repos).sync_demo(seed=11)
+        context = AnalysisService(settings, repos).board(
+            use_draft=False, simulate=True, next_pick=12, iterations=200, seed=3
+        )
+        assert context.simulation is not None
+        assert context.simulation.target_pick == 12
+        assert context.availability_method() == "monte-carlo"
+
+    def test_target_pick_changes_availability(self, settings, repos):
+        # A later pick must be strictly harder to survive to, or the override
+        # is being accepted and then ignored.
+        SyncService(settings, repos).sync_demo(seed=11)
+        service = AnalysisService(settings, repos)
+        early = service.board(
+            use_draft=False, simulate=True, next_pick=3, iterations=300, seed=3
+        )
+        late = service.board(
+            use_draft=False, simulate=True, next_pick=24, iterations=300, seed=3
+        )
+        best = early.board.top(1)[0].player_id
+        late_entry = next(p for p in late.board.players if p.player_id == best)
+        early_entry = next(p for p in early.board.players if p.player_id == best)
+        assert late_entry.availability.probability <= early_entry.availability.probability
+
+    def test_on_the_clock_is_always_fully_available(self, settings, repos):
+        # At your own pick every remaining player is available by definition.
+        # The ADP model used to report a player you could draft that second as
+        # ~65% likely to be there, contradicting the warning printed beside it.
+        SyncService(settings, repos).sync_demo(seed=11)
+        context = AnalysisService(settings, repos).board(
+            use_draft=False, simulate=True, next_pick=1, seed=3
+        )
+        top = context.board.top(10)
+        assert all(player.availability.probability == pytest.approx(1.0) for player in top)
+        assert all(player.availability.method == "on-the-clock" for player in top)
+
     def test_missing_data_raises_a_helpful_error(self, settings, repos):
         with pytest.raises(DataMissingError, match="sync players"):
             AnalysisService(settings, repos).board()
