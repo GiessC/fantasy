@@ -56,6 +56,30 @@ will never see it; opening a new one fixes that case by itself.
 
 ```bash
 git clone <this repo> && cd fantasy
+./setup.sh
+```
+
+That is the whole thing. It finds Python, builds the virtual environment,
+installs everything, creates your config files, loads demo data, and prints a
+board to prove the pipeline works. Re-running is safe and never overwrites a
+config you have edited; `./setup.sh --clean` forces a rebuild.
+
+Then use the wrapper in this folder, which runs out of the virtual environment
+so you never have to activate anything:
+
+```bash
+./fantasy-ai analyze board
+```
+
+**macOS ships Python 3.9, which is too old.** If setup says so, install a newer
+one with `brew install python@3.12` (or from
+[python.org](https://www.python.org/downloads/)), open a new terminal, and run
+`./setup.sh` again.
+
+<details>
+<summary>Doing it by hand instead</summary>
+
+```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
@@ -68,6 +92,7 @@ fantasy-ai db init
 fantasy-ai sync demo                  # synthetic data -- no API key, no network
 fantasy-ai analyze board
 ```
+</details>
 
 `sync demo` generates a complete synthetic season so you can drive the whole
 tool before wiring up real data. Everything it produces is labelled
