@@ -573,3 +573,39 @@ class TestSeasonHistory:
         )
         assert fragile is not None, "the imported player should be in the dataset's history"
         assert len(dataset.history[fragile]) == 2
+
+
+class TestMarkdownBoard:
+    """The board as a checklist, for a notes app or a printout."""
+
+    def _lines(self, settings, repos) -> list[str]:
+        import contextlib
+        import io
+
+        from fantasy_ai.cli.render import print_board_markdown
+
+        SyncService(settings, repos).sync_demo(seed=11)
+        board = AnalysisService(settings, repos).board(use_draft=False, simulate=False).board
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            print_board_markdown(
+                board.top(10), league="Test League", season=2026, scoring="Full PPR",
+                next_pick=7,
+            )
+        return buffer.getvalue().splitlines()
+
+    def test_emits_checkable_items_in_board_order(self, settings, repos):
+        lines = self._lines(settings, repos)
+        items = [line for line in lines if line.startswith("- [ ]")]
+        assert len(items) == 10
+        # Numbered by list position, not overall_rank: the board is ordered by
+        # draft score while overall_rank is the VOR ordering, and a checklist
+        # counting "1, 2, 4, 3" reads as a bug.
+        for position, line in enumerate(items, start=1):
+            assert line.startswith(f"- [ ] **{position}. ")
+
+    def test_header_names_the_league_and_scoring(self, settings, repos):
+        lines = self._lines(settings, repos)
+        assert lines[0].startswith("# Draft board -- Test League 2026")
+        assert any("Full PPR" in line for line in lines)
+        assert any("pick 7" in line for line in lines)

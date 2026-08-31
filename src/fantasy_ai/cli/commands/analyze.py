@@ -10,6 +10,7 @@ from ..context import CLIContext
 from ..render import (
     note,
     print_board,
+    print_board_markdown,
     print_json,
     print_player_detail,
     print_replacement_levels,
@@ -43,6 +44,10 @@ def analyze_board(
     iterations: int = typer.Option(None, "--iterations", min=1),
     detail: bool = typer.Option(False, "--detail", help="Also show scarcity and replacement."),
     as_json: bool = typer.Option(False, "--json"),
+    as_markdown: bool = typer.Option(
+        False, "--markdown", "-m",
+        help="Emit a Markdown checklist, for a notes app or a printout.",
+    ),
 ) -> None:
     """The full draft board, ranked by composite draft score."""
     cli: CLIContext = ctx.obj
@@ -78,6 +83,16 @@ def analyze_board(
                 "current_pick": board.current_pick,
                 "players": [player.to_dict() for player in players],
             }
+        )
+        return
+
+    if as_markdown:
+        print_board_markdown(
+            players,
+            league=cli.settings.league.name,
+            season=board.season,
+            scoring=cli.settings.league.scoring.compile().describe_format(),
+            next_pick=board.next_pick,
         )
         return
 

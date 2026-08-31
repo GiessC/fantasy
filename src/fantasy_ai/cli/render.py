@@ -203,6 +203,49 @@ def print_player_detail(player: PlayerAnalysis) -> None:
     )
 
 
+def print_board_markdown(
+    players: Sequence[PlayerAnalysis],
+    *,
+    league: str,
+    season: int,
+    scoring: str,
+    next_pick: int | None = None,
+) -> None:
+    """The board as a Markdown checklist, for pasting into a notes app.
+
+    A checklist rather than a table: during a draft the useful action is
+    crossing a name off, and a table row cannot be ticked. Everything needed to
+    make a pick sits on one line so the list stays scannable at speed.
+    """
+    header = f"# Draft board -- {league} {season}"
+    print(header)
+    print()
+    print(f"*{scoring}. Sorted by draft score under this league's rules.*")
+    if next_pick is not None:
+        print(f"*Availability measured at pick {next_pick}.*")
+    print()
+    print("`Proj` projected points · `VOR` points over replacement · "
+          "`Avail` chance he lasts to your next pick")
+    print()
+
+    # Numbered by position in this list, not by overall_rank: the board is
+    # ordered by draft score while overall_rank is the VOR ordering, so the two
+    # disagree and a checklist counting "1, 2, 4, 3" reads as a bug.
+    for index, player in enumerate(players, start=1):
+        bits = [f"{player.projected_points:.0f} proj", f"{player.vor.vor:+.0f} VOR"]
+        if player.adp is not None:
+            bits.append(f"ADP {player.adp:.0f}")
+        if player.tier is not None:
+            bits.append(f"tier {player.tier.tier}")
+        if player.availability is not None:
+            bits.append(f"{player.availability.probability * 100:.0f}% avail")
+        team = f" {player.team}" if player.team else ""
+        print(
+            f"- [ ] **{index}. {player.name}** "
+            f"({player.position}{team}) — " + " · ".join(bits)
+        )
+
+
 def print_season_history(name: str, history: Sequence[SeasonHistoryRecord]) -> None:
     """Past seasons, newest first.
 
